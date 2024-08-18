@@ -30,6 +30,7 @@ export class DiscoveryService {
   public stop(): void {
     if (this.discoverTimeout) {
       clearTimeout(this.discoverTimeout);
+      this.discoverTimeout = undefined;
     }
     this.destroy();
   }
@@ -110,6 +111,7 @@ export class DiscoveryService {
             this.interfacePair = this.interfacePair.filter(
               (iface) => iface.ip !== info.address
             );
+            mdns.destroy();
           });
           mdns.on("warning", (warn) => {
             log(`mDNS warning: ${warn}`);
