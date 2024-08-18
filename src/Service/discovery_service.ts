@@ -2,8 +2,8 @@ import { log } from "../logger";
 import multicastDns from "multicast-dns";
 import * as vscode from "vscode";
 import os from "os";
-import { Device } from "../Service/device";
-import { DeviceStatus } from "../Model/device_status";
+import { Device } from "./device";
+import { DeviceStatus } from "../model/device_status";
 
 export class DiscoveryService {
   // private devices: Device[] = [];

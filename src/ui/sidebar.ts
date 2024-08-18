@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { TreeItem } from "vscode";
-import { Device } from "../Model/device";
+import { Device } from "../model/device";
 
 export class Sidebar {
   private deviceDataProvider: DeviceDataProvider;

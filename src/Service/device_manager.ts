@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { Device } from "../Service/device";
-import { DeviceStatus } from "../Model/device_status";
+import { Device } from "./device";
+import { DeviceStatus } from "../model/device_status";
 
 class DeviceManager {
   private devices: Device[] = [];

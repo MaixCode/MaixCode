@@ -1,6 +1,6 @@
-import { WebSocketService } from "../Service/websocket_service";
+import { WebSocketService } from "./websocket_service";
 import { info, warn, error } from "../logger";
-import { DeviceStatus } from "../Model/device_status";
+import { DeviceStatus } from "../model/device_status";
 
 export class Device {
   constructor(
