@@ -80,7 +80,7 @@
       "view/item/context": [
         {
           "command": "maixcode.deviceConnect",
-          "when": "viewItem == maixcode-device",
+          "when": "viewItem == maixcode-deviceIp",
           "group": "inline"
         }
       ]
@@ -99,9 +99,9 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.7",
+    "@types/multicast-dns": "^7.2.4",
     "@types/node": "20.x",
     "@types/vscode": "^1.92.0",
-    "@types/multicast-dns": "^7.2.4",
     "@types/ws": "^8.5.12",
     "@typescript-eslint/eslint-plugin": "^7.14.1",
     "@typescript-eslint/parser": "^7.11.0",

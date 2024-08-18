@@ -41,19 +41,20 @@ function packUint32(value: number) {
 }
 
 export class WebSocketService {
-  private ws: ws.WebSocket;
+  private ws?: ws.WebSocket;
 
   constructor(
-    readonly ip: string,
-    readonly port: number = 7899,
+    public readonly ip: string,
+    public readonly port: number = 7899,
     private hookOpen: () => void = () => {},
     private hookClose: (code: number, reason: Buffer) => void = () => {},
     private hookError: (
       err: Error | { code: number; msg: string }
     ) => void = () => {},
     private hookImg: (data: ArrayBuffer) => void = () => {}
-  ) {
-    this.ws = new ws.WebSocket(`ws://${ip}:${port}`);
+  ) {}
+  public connect() {
+    this.ws = new ws.WebSocket(`ws://${this.ip}:${this.port}`);
     this.ws.binaryType = "arraybuffer";
 
     this.ws.on("open", this.onOpen);
@@ -77,7 +78,7 @@ export class WebSocketService {
     return new Uint8Array([...message, checksum]);
   }
   public sendMessage(cmd: number, data: number | string | Buffer) {
-    this.ws.send(WebSocketService.packMessage(cmd, data));
+    this.ws?.send(WebSocketService.packMessage(cmd, data));
   }
   private onOpen() {
     this.sendMessage(COMMAND.Auth, "maixvision");

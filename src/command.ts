@@ -7,11 +7,11 @@ export function initCommands(
     func: () => void;
   }[]
 ) {
-  commandList.forEach((command) => {
+  for (let command of commandList) {
     const disposable = vscode.commands.registerCommand(
       command.name,
       command.func
     );
     context.subscriptions.push(disposable);
-  });
+  }
 }

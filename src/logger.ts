@@ -9,7 +9,7 @@ export function initLogger(context: vscode.ExtensionContext) {
 
 export function log(message: string) {
   outputChannel.appendLine(
-    `[${dayjs().format("YYYY-MM-DD h:mm:ss")}][Info] ${message}`
+    `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Info] ${message}`
   );
 }
 
@@ -21,18 +21,18 @@ export function info(message: string) {
 
 export function warn(message: string) {
   outputChannel.appendLine(
-    `[${dayjs().format("YYYY-MM-DD h:mm:ss")}][Warning] ${message}`
+    `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Warning] ${message}`
   );
 }
 
 export function error(message: string | Error) {
   if (typeof message === "string") {
     outputChannel.appendLine(
-      `[${dayjs().format("YYYY-MM-DD h:mm:ss")}][Error] ${message}`
+      `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] ${message}`
     );
   } else {
     outputChannel.appendLine(
-      `[${dayjs().format("YYYY-MM-DD h:mm:ss")}][Error] Catch an error: ${
+      `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] Catch an error: ${
         message.message
       }, \nstack: ${message.stack}`
     );

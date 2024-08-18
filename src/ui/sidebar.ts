@@ -1,32 +1,38 @@
 import * as vscode from "vscode";
 import { TreeItem } from "vscode";
+import { Device } from "../Model/device";
 
 export class Sidebar {
+  private deviceDataProvider: DeviceDataProvider;
   constructor(
     private readonly context: vscode.ExtensionContext,
     public getDevices: () => { name: string; ip: string }[] = () => []
   ) {
-    let deviceDataProvider = new DeviceDataProvider(getDevices);
+    this.deviceDataProvider = new DeviceDataProvider(getDevices);
     vscode.window.registerTreeDataProvider(
       "maixcode-devices",
-      deviceDataProvider
+      this.deviceDataProvider
     );
     context.subscriptions.push(
       vscode.commands.registerCommand("maixcode.refreshDevices", () => {
-        deviceDataProvider.refresh();
+        this.deviceDataProvider.refresh();
       })
     );
     context.subscriptions.push(
       vscode.commands.registerCommand("maixcode.deviceConnect", (args) => {
-        // args;4
-        // if (args instanceof DeviceItem) {
-        //   vscode.window.showInformationMessage(`Connect to ${args.label}`);
-        // }
+        args;
+        if (args instanceof DeviceIpItem) {
+          vscode.window.showInformationMessage(`Connect to ${args.label}`);
+        }
       })
     );
     setInterval(() => {
-      deviceDataProvider.refresh();
+      this.deviceDataProvider.refresh();
     }, 2000);
+  }
+
+  public refresh() {
+    this.deviceDataProvider.refresh();
   }
 }
 
@@ -62,9 +68,10 @@ class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
     let devices = this.getDevices();
     let items: TreeItem[] = [];
     let names = new Set(devices.map((device) => device.name));
-    names.forEach((name) => {
+    for (let name of names) {
       items.push(new DeviceGroupItem(name));
-    });
+    }
+    items.unshift(new DeviceInfoItem(`Total ${devices.length} devices`));
     return items;
   }
 

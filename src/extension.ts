@@ -18,6 +18,8 @@ export function activate(context: vscode.ExtensionContext) {
   const secondarySidebar = new SecondarySidebar(context);
   const statusBar = new StatusBar();
 
+  discoveryService.onDeviceChanged = () => sidebar.refresh();
+
   // initCommands(context, [
   //   {
   //     name: "maixcode.helloWorld",
