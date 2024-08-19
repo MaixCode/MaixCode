@@ -1,4 +1,4 @@
-import { info, error } from "../logger";
+import { info, warn, error } from "../logger";
 import ws from "ws";
 
 const HEADER = Uint8Array.of(172, 190, 203, 202);
@@ -46,12 +46,12 @@ export class WebSocketService {
   constructor(
     public readonly ip: string,
     public readonly port: number = 7899,
-    private hookOpen: () => void = () => {},
-    private hookClose: (code: number, reason: Buffer) => void = () => {},
-    private hookError: (
+    public hookOpen: () => void = () => {},
+    public hookClose: (code: number, reason: string) => void = () => {},
+    public hookError: (
       err: Error | { code: number; msg: string }
     ) => void = () => {},
-    private hookImg: (data: ArrayBuffer) => void = () => {}
+    public hookImg: (data: ArrayBuffer) => void = () => {}
   ) {}
   public connect() {
     this.ws = new ws.WebSocket(`ws://${this.ip}:${this.port}`);
@@ -62,6 +62,15 @@ export class WebSocketService {
     this.ws.on("close", this.onClose);
     this.ws.on("error", this.onError);
   }
+
+  public disconnect() {
+    if (this.ws) {
+      this.ws.removeAllListeners();
+      this.ws.close();
+      this.onClose(-1, "Disconnect by websocket service");
+    }
+  }
+
   static packMessage(cmd: number, data: number | string | Buffer) {
     if (typeof data === "number") {
       data = Buffer.from(num2Uint8Array(data));
@@ -78,6 +87,7 @@ export class WebSocketService {
     return new Uint8Array([...message, checksum]);
   }
   public sendMessage(cmd: number, data: number | string | Buffer) {
+    info(`Send message: cmd: ${cmd}, data: ${data}`);
     this.ws?.send(WebSocketService.packMessage(cmd, data));
   }
   private onOpen() {
@@ -94,7 +104,7 @@ export class WebSocketService {
     error(err);
     this.hookError(err);
   }
-  private onClose(code: number, reason: Buffer) {
+  private onClose(code: number, reason: string) {
     this.hookClose(code, reason);
   }
   private unpackMessage(
@@ -126,59 +136,36 @@ export class WebSocketService {
     return { cmd, content };
   }
   private handleCommand(cmd: number, content: Uint8Array) {
-    switch (cmd) {
-      case COMMAND.AuthAck: {
-        const ok = this.authCommand(content);
-        if (ok) {
-          this.sendMessage(COMMAND.DeviceInfo, "");
-        } else {
-          // disconnect$1();
-        }
-        break;
-      }
-      case COMMAND.RunAck:
-        this.runAckCommand(content);
-        break;
-      case COMMAND.Output:
-        this.outputCommand(content);
-        break;
-      case COMMAND.Img:
-        this.imgCommand(content);
-        break;
-      case COMMAND.StopAck:
-        this.stopAckCommand(content);
-        break;
-      case COMMAND.Finish:
-        this.finishCommand(content);
-        break;
-      case COMMAND.Msg:
-        this.msgCommand(content);
-        break;
-      case COMMAND.Heartbeat:
-        this.sendMessage(COMMAND.Heartbeat, "");
-        break;
-      case COMMAND.DeviceInfoAck:
-        this.deviceInfoAckCommand(content);
-        break;
-      case COMMAND.ImgFormatAck:
-        this.imgFormatCommand(content);
-        break;
-      case COMMAND.InstallAppAck:
-        this.installAppAckCommand(content);
-        break;
-      default:
-        // log;
-        break;
+    let table: { [key: number]: (content: Uint8Array) => void } = {
+      [COMMAND.AuthAck]: this.authCommand,
+      [COMMAND.RunAck]: this.runAckCommand,
+      [COMMAND.Output]: this.outputCommand,
+      [COMMAND.Img]: this.imgCommand,
+      [COMMAND.StopAck]: this.stopAckCommand,
+      [COMMAND.Finish]: this.finishCommand,
+      [COMMAND.Msg]: this.msgCommand,
+      [COMMAND.Heartbeat]: () => this.sendMessage(COMMAND.Heartbeat, ""),
+      [COMMAND.DeviceInfoAck]: this.deviceInfoAckCommand,
+      [COMMAND.ImgFormatAck]: this.imgFormatCommand,
+      [COMMAND.InstallAppAck]: this.installAppAckCommand,
+    };
+    let handler = table[cmd];
+    if (handler) {
+      handler(content);
+    } else {
+      warn(`Unknown command: cmd: ${cmd}, content: ${content}`);
     }
   }
   private authCommand(content: Uint8Array) {
     const isSuccess = content[0] === 1;
     if (isSuccess) {
-      info("connect device successful");
+      info("Connect device successful");
+      this.sendMessage(COMMAND.DeviceInfo, "");
     } else {
-      const msg = `connect device failed: ${Buffer.from(
+      const msg = `Connect device failed: ${Buffer.from(
         content.slice(1)
       ).toString()}`;
+      this.disconnect();
       error(msg);
       this.hookError({ code: -2, msg });
     }
@@ -187,9 +174,9 @@ export class WebSocketService {
   private runAckCommand(content: Uint8Array) {
     const isSuccess = content[0] === 1;
     if (isSuccess) {
-      info("start running...");
+      info("Start running...");
     } else {
-      const msg = `device execute code failed: ${Buffer.from(
+      const msg = `Device execute code failed: ${Buffer.from(
         content.slice(1)
       )}`;
       error(msg);
@@ -217,10 +204,10 @@ export class WebSocketService {
   private stopAckCommand(content: Uint8Array) {
     const isSuccess = content[0] === 1;
     const rsp = isSuccess
-      ? { code: 0, msg: "stop running success" }
+      ? { code: 0, msg: "Stop running success" }
       : {
           code: -1,
-          msg: `stop running failed: ${Buffer.from(
+          msg: `Stop running failed: ${Buffer.from(
             content.slice(1)
           ).toString()}`,
         };
@@ -229,13 +216,13 @@ export class WebSocketService {
     const isSuccess = content.slice(0, 4).every((a) => a === 0);
     let rsp;
     if (isSuccess) {
-      rsp = { code: 0, msg: "program exited" };
+      rsp = { code: 0, msg: "Program exited" };
     } else {
       const view = new DataView(content.slice(0, 4).buffer, 0);
       const code = view.getUint32(0, true);
       const err = Buffer.from(content.slice(4)).toString();
-      const msg2 = `program exit failed. exit code: ${code}. ${
-        err ? "msg: " + err : ""
+      const msg2 = `Program exit failed. Exit code: ${code}. ${
+        err ? "Msg: " + err : ""
       }`;
       rsp = { code, msg: msg2 };
     }
@@ -252,7 +239,7 @@ export class WebSocketService {
       ? {
           code: 0,
           format: content[1] === 1 ? "JPEG" : content[1] === 2 ? "PNG" : "",
-          msg: "success",
+          msg: "Success",
         }
       : {
           code: -1,
@@ -266,7 +253,7 @@ export class WebSocketService {
       ? {
           code: 0,
           progress: content[0],
-          msg: "success",
+          msg: "Success",
         }
       : {
           code: -1,
