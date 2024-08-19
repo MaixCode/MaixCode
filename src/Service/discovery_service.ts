@@ -2,7 +2,7 @@ import { log } from "../logger";
 import multicastDns from "multicast-dns";
 import * as vscode from "vscode";
 import os from "os";
-import { Device } from "./device";
+import { Device } from "../model/device";
 import { DeviceStatus } from "../model/device_status";
 
 export class DiscoveryService {
@@ -71,16 +71,16 @@ export class DiscoveryService {
           let device = new Device(answer.name, answer.data);
           device.status = DeviceStatus.offline;
           log(`Found device ${device.name} at ${device.ip}`);
-          vscode.window
-            .showInformationMessage(
-              `Found device ${device.name} at ${device.ip}`,
-              "Connect"
-            )
-            .then((selection) => {
-              if (selection === "Connect") {
-                this.connectCallback(device);
-              }
-            });
+          // vscode.window
+          //   .showInformationMessage(
+          //     `Found device ${device.name} at ${device.ip}`,
+          //     "Connect"
+          //   )
+          //   .then((selection) => {
+          //     if (selection === "Connect") {
+          //       this.connectCallback(device);
+          //     }
+          //   });
           this.devices.push({ device: device, lastSeen: Date.now() });
           this.onDeviceChanged(this.devices.map((device) => device.device));
         }

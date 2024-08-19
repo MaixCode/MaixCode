@@ -1,44 +1,22 @@
 import * as vscode from "vscode";
-import { Device } from "./device";
+import { DeviceService } from "./device_service";
 import { DeviceStatus } from "../model/device_status";
 
-class DeviceManager {
-  private devices: Device[] = [];
+let __device: DeviceService | undefined = undefined;
 
-  constructor(private context: vscode.ExtensionContext) {
-    let _devices = this.context.globalState.get("maixcode.devices") || [];
+export class DeviceManager {
+  constructor(private context: vscode.ExtensionContext) {}
+  static setDevice(device: DeviceService) {
+    __device = device;
   }
 
-  public addDevice(device: Device) {
-    this.devices.push(device);
+  static getDevice() {
+    if (__device) {
+      return __device;
+    }
   }
 
-  public addDevices(devices: Device[]) {
-    this.devices.push(...devices);
-  }
-
-  public getDeviceByIp(ip: string) {
-    return this.devices.filter((device) => device.ip === ip);
-  }
-
-  public getDeviceByName(name: string) {
-    return this.devices.filter((device) => device.name === name);
-  }
-
-  public getDevices() {
-    return this.devices;
-  }
-
-  public isOnline(name: string) {
-    const device = this.getDeviceByName(name);
-    return (
-      device.length > 0 &&
-      device.some((device) => device.status === DeviceStatus.online)
-    );
-  }
-
-  public save() {
-    // Save devices to local storage
-    this.context.globalState.update("maixcode.devices", this.devices);
+  static clearDevice() {
+    __device = undefined;
   }
 }
