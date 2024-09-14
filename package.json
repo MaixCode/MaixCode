@@ -3,6 +3,7 @@
   "displayName": "MaixCode",
   "description": "MaixVision on VSCode",
   "version": "0.0.1",
+  "publisher": "Cranyozen",
   "engines": {
     "vscode": "^1.92.0"
   },
@@ -37,13 +38,6 @@
         {
           "id": "maixcode-example",
           "name": "Example"
-        }
-      ],
-      "maixcode-toolview": [
-        {
-          "type": "webview",
-          "id": "maixcode-tool",
-          "name": "Tool"
         }
       ]
     },
@@ -84,7 +78,32 @@
           "group": "inline"
         }
       ]
-    }
+    },
+    "debuggers": [
+      {
+        "type": "maixpy",
+        "label": "MaixPy Debug",
+        "program": "./out/debugger.js",
+        "runtime": "python",
+        "languages": [
+          "python"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "The program to debug",
+                "default": "${workspaceFolder}/main.py"
+              }
+            }
+          }
+        }
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "yarn run package",
@@ -114,6 +133,8 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "@octokit/rest": "^21.0.1",
+    "@vscode/debugadapter": "^1.66.0",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "dayjs": "^1.11.12",
     "multicast-dns": "^7.2.5",

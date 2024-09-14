@@ -1,3 +1,4 @@
+import { Instance } from "../instance";
 import { info, warn, error } from "../logger";
 import ws from "ws";
 
@@ -129,6 +130,9 @@ export class WebSocketService {
     this.hookError(err);
   }
   private onClose(code: number, reason: string) {
+    if (this.timeOut) {
+      clearTimeout(this.timeOut);
+    }
     this.hookClose(code, reason);
   }
   private unpackMessage(
@@ -263,6 +267,7 @@ export class WebSocketService {
     // return Buffer.from(content).toString();
     // decode string to object(json)
     this.deviceInfo = Buffer.from(content).toString();
+    Instance.instance.siderbar.refresh();
   }
   private imgFormatCommand(content: Uint8Array) {
     const isSuccess = content[0] === 1;

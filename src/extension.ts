@@ -1,29 +1,27 @@
 import * as vscode from "vscode";
-import { DiscoveryService } from "./service/discovery_service";
 import { initCommands } from "./command";
 import { initLogger, log } from "./logger";
-import { Sidebar } from "./ui/sidebar";
-import { SecondarySidebar } from "./ui/secondary_sidebar";
-import { StatusBar } from "./ui/statusbar";
-import { DeviceManager } from "./service/device_manager";
-import { DeviceService } from "./service/device_service";
+import { DebugAdapterFactory } from "./debugger";
+import { Instance } from "./instance";
 
 export function activate(context: vscode.ExtensionContext) {
   // Initialize logger
   initLogger(context);
   log("MaixCode is now active!");
-  // Initialize services
-  const discoveryService = new DiscoveryService(context);
-  discoveryService.start();
 
-  const deviceService = new DeviceService(context);
+  // Initialize instance
+  Instance.initInstance(context);
 
-  const sidebar = new Sidebar(context, () => discoveryService.getDevices());
-  const secondarySidebar = new SecondarySidebar(context);
-  const statusBar = new StatusBar();
-  const deviceManager = new DeviceManager(context);
+  Instance.instance.discoveryService.start();
 
-  discoveryService.onDeviceChanged = () => sidebar.refresh();
+  // const imageViewer = new ImageViewer(context);
+  // imageViewer.showWindow();
+
+  // Activate the debug adapter
+  let factory = new DebugAdapterFactory();
+  context.subscriptions.push(
+    vscode.debug.registerDebugAdapterDescriptorFactory("maixpy", factory)
+  );
 
   // initCommands(context, [
   //   {

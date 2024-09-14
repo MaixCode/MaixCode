@@ -3,11 +3,8 @@ import { DeviceDataProvider, DeviceIpItem } from "./provider/device_data";
 
 export class Sidebar {
   private deviceDataProvider: DeviceDataProvider;
-  constructor(
-    private readonly context: vscode.ExtensionContext,
-    public getDevices: () => { name: string; ip: string }[] = () => []
-  ) {
-    this.deviceDataProvider = new DeviceDataProvider(getDevices);
+  constructor(private readonly context: vscode.ExtensionContext) {
+    this.deviceDataProvider = new DeviceDataProvider();
     vscode.window.registerTreeDataProvider(
       "maixcode-devices",
       this.deviceDataProvider

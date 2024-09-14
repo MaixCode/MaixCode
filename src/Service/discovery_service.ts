@@ -3,7 +3,7 @@ import multicastDns from "multicast-dns";
 import * as vscode from "vscode";
 import os from "os";
 import { Device } from "../model/device";
-import { DeviceStatus } from "../model/device_status";
+import { Instance } from "../instance";
 
 export class DiscoveryService {
   // private devices: Device[] = [];
@@ -69,7 +69,6 @@ export class DiscoveryService {
             continue;
           }
           let device = new Device(answer.name, answer.data);
-          device.status = DeviceStatus.offline;
           log(`Found device ${device.name} at ${device.ip}`);
           // vscode.window
           //   .showInformationMessage(
@@ -82,7 +81,8 @@ export class DiscoveryService {
           //     }
           //   });
           this.devices.push({ device: device, lastSeen: Date.now() });
-          this.onDeviceChanged(this.devices.map((device) => device.device));
+          // this.onDeviceChanged(this.devices.map((device) => device.device));
+          Instance.instance.siderbar.refresh();
         }
       }
     };
@@ -134,7 +134,8 @@ export class DiscoveryService {
     );
     if (_device.length !== this.devices.length) {
       this.devices = _device;
-      this.onDeviceChanged(this.devices.map((device) => device.device));
+      // this.onDeviceChanged(this.devices.map((device) => device.device));
+      Instance.instance.siderbar.refresh();
     }
   }
 

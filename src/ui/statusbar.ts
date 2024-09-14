@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import { Status } from "../model/status";
+import { Instance } from "../instance";
 
 export class StatusBar {
   private statusBarItem: vscode.StatusBarItem;
@@ -10,6 +12,27 @@ export class StatusBar {
     this.statusBarItem.text = "MaixCode";
     this.statusBarItem.command = "maixcode.helloWorld";
     this.statusBarItem.show();
+  }
+
+  public updateByStatus(status: Status) {
+    switch (status) {
+      case Status.online:
+        this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+          "statusBarItem.warningBackground"
+        );
+        this.statusBarItem.text =
+          Instance.instance.deviceService.device?.name || "MaixCode: Online";
+        break;
+      case Status.offline:
+        this.statusBarItem.text = "MaixCode: Offline";
+        break;
+      case Status.connecting:
+        this.statusBarItem.text = "MaixCode: Connecting";
+        break;
+      case Status.error:
+        this.statusBarItem.text = "MaixCode: Error";
+        break;
+    }
   }
 
   public update(text: string) {

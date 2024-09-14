@@ -1,15 +1,17 @@
 import * as vscode from "vscode";
 import { WebSocketService } from "./websocket_service";
 import { info, warn, error } from "../logger";
-import { DeviceStatus } from "../model/device_status";
 import { DeviceIpItem } from "../ui/provider/device_data";
 import { Device } from "../model/device";
+import { Instance } from "../instance";
+import { Status } from "../model/status";
 
 export class DeviceService {
   constructor(
     private context: vscode.ExtensionContext,
     public device?: Device,
-    public wss?: WebSocketService
+    public wss?: WebSocketService,
+    public onImage?: (imageData: ArrayBuffer) => void
   ) {
     context.subscriptions.push(
       vscode.commands.registerCommand(
@@ -19,7 +21,7 @@ export class DeviceService {
           if (!args) {
             // Ask user to input ip
             ip = await vscode.window.showInputBox({
-              prompt: "Input device ip",
+              placeHolder: "Input device ip",
               validateInput: (value) => {
                 // Validate IP address format
                 const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
@@ -38,7 +40,10 @@ export class DeviceService {
             this.connect(new Device("unknown", ip));
           }
         }
-      )
+      ),
+      vscode.commands.registerCommand("maixcode.deviceDisconnect", () => {
+        this.disconnect();
+      })
     );
   }
 
@@ -59,13 +64,21 @@ export class DeviceService {
       info(`Device ${this.device?.name} disconnected: ${reason}`);
       this.wss = undefined;
     };
+    this.wss.hookImg = (data: ArrayBuffer) => {
+      this.onImage && this.onImage(data);
+    };
     this.wss.connect();
+    Instance.instance.setStatus(Status.online);
+    Instance.instance.siderbar.refresh();
   }
 
   public disconnect() {
     if (this.wss) {
       this.wss.disconnect();
       this.wss = undefined;
+      this.device = undefined;
+      Instance.instance.setStatus(Status.offline);
+      Instance.instance.siderbar.refresh();
     }
   }
 

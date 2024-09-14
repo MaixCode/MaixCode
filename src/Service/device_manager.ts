@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import { DeviceService } from "./device_service";
-import { DeviceStatus } from "../model/device_status";
 
 let __device: DeviceService | undefined = undefined;
 
