@@ -22,6 +22,10 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.debug.registerDebugAdapterDescriptorFactory("maixpy", factory)
   );
+  vscode.window.registerTreeDataProvider(
+    "maixcode-example",
+    Instance.instance.exampleFileProvider
+  );
 
   // initCommands(context, [
   //   {

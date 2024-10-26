@@ -55,12 +55,30 @@
       {
         "command": "maixcode.deviceConnect",
         "title": "Connect Device",
-        "icon": "$(debug-disconnect)"
+        "icon": "$(debug-disconnect)",
+        "category": "MaixCode"
       },
       {
         "command": "maixcode.refreshDevices",
         "title": "Refresh Devices",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.refreshExamples",
+        "title": "Refresh Examples",
+        "icon": "$(refresh)",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.openExample",
+        "title": "Open Example",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.openSourceExample",
+        "title": "Open Source File",
+        "enablement": "view == maixcode-example && viewItem == file"
       }
     ],
     "menus": {
@@ -69,6 +87,11 @@
           "command": "maixcode.refreshDevices",
           "when": "view == maixcode-devices",
           "group": "navigation"
+        },
+        {
+          "command": "maixcode.refreshExamples",
+          "when": "view == maixcode-example",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -76,6 +99,10 @@
           "command": "maixcode.deviceConnect",
           "when": "viewItem == maixcode-deviceIp",
           "group": "inline"
+        },
+        {
+          "command": "maixcode.openSourceExample",
+          "when": "view == maixcode-example && viewItem == file"
         }
       ]
     },
@@ -122,6 +149,7 @@
     "@types/node": "20.x",
     "@types/vscode": "^1.92.0",
     "@types/ws": "^8.5.12",
+    "@types/yamljs": "^0.2.34",
     "@typescript-eslint/eslint-plugin": "^7.14.1",
     "@typescript-eslint/parser": "^7.11.0",
     "@vscode/test-cli": "^0.0.9",
@@ -136,8 +164,11 @@
     "@octokit/rest": "^21.0.1",
     "@vscode/debugadapter": "^1.66.0",
     "@vscode/webview-ui-toolkit": "^1.4.0",
+    "axios": "^1.7.7",
     "dayjs": "^1.11.12",
+    "jszip": "^3.10.1",
     "multicast-dns": "^7.2.5",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "yamljs": "^0.3.0"
   }
 }

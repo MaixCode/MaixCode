@@ -5,6 +5,7 @@ import { WebSocketService } from "./service/websocket_service";
 import { Sidebar } from "./ui/sidebar";
 import { StatusBar } from "./ui/statusbar";
 import { Status } from "./model/status";
+import { ExampleFileProvider } from "./ui/provider/example";
 
 export class Instance {
   public static instance: Instance;
@@ -13,6 +14,7 @@ export class Instance {
   public discoveryService: DiscoveryService;
   public siderbar: Sidebar;
   public statusbar: StatusBar;
+  public exampleFileProvider: ExampleFileProvider;
   public onStatusChange: (status: Status) => void = () => {};
   private status: Status = Status.offline;
   // public websocket_service: WebSocketService
@@ -22,6 +24,7 @@ export class Instance {
     this.discoveryService = new DiscoveryService(context);
     this.siderbar = new Sidebar(context);
     this.statusbar = new StatusBar();
+    this.exampleFileProvider = new ExampleFileProvider(context);
   }
 
   static initInstance(context: vscode.ExtensionContext) {
