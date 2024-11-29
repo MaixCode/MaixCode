@@ -23,6 +23,8 @@ const COMMAND = {
   InstallApp: 16,
   InstallAppAck: 17,
   RunProject: 18,
+  UpdateRuntime: 19,
+  UpdateRuntimeAck: 20,
 };
 
 function num2Uint8Array(num: number) {
@@ -181,6 +183,7 @@ export class WebSocketService {
       [COMMAND.DeviceInfoAck]: this.deviceInfoAckCommand,
       [COMMAND.ImgFormatAck]: this.imgFormatCommand,
       [COMMAND.InstallAppAck]: this.installAppAckCommand,
+      [COMMAND.UpdateRuntimeAck]: () => {},
     };
     let handler = table[cmd];
     if (handler) {
