@@ -2,12 +2,12 @@ import { log } from "../logger";
 import multicastDns from "multicast-dns";
 import * as vscode from "vscode";
 import os from "os";
-import { Device } from "../model/device";
+import { DeviceAddr } from "../model/device";
 import { Instance } from "../instance";
 
 export class DiscoveryService {
   // private devices: Device[] = [];
-  private devices: { device: Device; lastSeen: number }[] = [];
+  private devices: { device: DeviceAddr; lastSeen: number }[] = [];
   private interfacePair: {
     ip: String;
     interface: multicastDns.MulticastDNS;
@@ -17,10 +17,10 @@ export class DiscoveryService {
   constructor(
     private readonly context: vscode.ExtensionContext,
     public readonly prefix: string = "maixcam",
-    public readonly discoverDelayMs: number = 1000,
+    public readonly discoverDelayMs: number = 3000,
     public readonly timeoutMs: number = 4000,
-    public onDeviceChanged: (device: Device[]) => void = () => {},
-    public connectCallback: (device: Device) => void = () => {}
+    public onDeviceChanged: (device: DeviceAddr[]) => void = () => {},
+    public connectCallback: (device: DeviceAddr) => void = () => {}
   ) {
     context.subscriptions.push(
       vscode.commands.registerCommand("maixcode.discoverDevices", this.discover)
@@ -68,7 +68,7 @@ export class DiscoveryService {
             _device.lastSeen = Date.now();
             continue;
           }
-          let device = new Device(answer.name, answer.data);
+          let device = new DeviceAddr(answer.name, answer.data);
           log(`Found device ${device.name} at ${device.ip}`);
           // vscode.window
           //   .showInformationMessage(
@@ -139,7 +139,7 @@ export class DiscoveryService {
     }
   }
 
-  public getDevices(): Device[] {
+  public getDevices(): DeviceAddr[] {
     return this.devices.map((device) => device.device);
   }
 

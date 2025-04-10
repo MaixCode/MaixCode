@@ -1,6 +1,30 @@
 import * as vscode from "vscode";
-import { DebugSession, InitializedEvent } from "@vscode/debugadapter";
-import { DebugProtocol } from "@vscode/debugprotocol";
+import { MaixPyDebugSession } from "./debugger/session";
+import { FileAccessor } from "./debugger/runtime";
+
+function pathToUri(path: string) {
+  try {
+    return vscode.Uri.file(path);
+  } catch (e) {
+    return vscode.Uri.parse(path);
+  }
+}
+export const workspaceFileAccessor: FileAccessor = {
+  isWindows: typeof process !== "undefined" && process.platform === "win32",
+  async readFile(path: string): Promise<Uint8Array> {
+    let uri: vscode.Uri;
+    try {
+      uri = pathToUri(path);
+    } catch (e) {
+      return new TextEncoder().encode(`cannot read '${path}'`);
+    }
+
+    return await vscode.workspace.fs.readFile(uri);
+  },
+  async writeFile(path: string, contents: Uint8Array) {
+    await vscode.workspace.fs.writeFile(pathToUri(path), contents);
+  },
+};
 
 export class DebugAdapterFactory
   implements vscode.DebugAdapterDescriptorFactory
@@ -8,19 +32,13 @@ export class DebugAdapterFactory
   createDebugAdapterDescriptor(
     _session: vscode.DebugSession
   ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    return new vscode.DebugAdapterInlineImplementation(
-      new MaixPyDebugSession()
-    );
-  }
-}
-
-export class MaixPyDebugSession extends DebugSession {
-  protected launchRequest(
-    response: DebugProtocol.LaunchResponse,
-    args: DebugProtocol.LaunchRequestArguments,
-    request?: DebugProtocol.Request
-  ): void {
-    this.sendResponse(response);
-    this.sendEvent(new InitializedEvent());
+    if (_session.configuration.request === "launch") {
+      return new vscode.DebugAdapterInlineImplementation(
+        new MaixPyDebugSession(workspaceFileAccessor)
+      );
+    } else {
+      vscode.window.showErrorMessage("Unknown debug request name");
+      return undefined;
+    }
   }
 }

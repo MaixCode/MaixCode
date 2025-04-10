@@ -37,5 +37,11 @@ export function error(message: string | Error) {
       }, \nstack: ${message.stack}`
     );
   }
-  vscode.window.showErrorMessage("An error occurred, please check the log.");
+  vscode.window
+    .showErrorMessage("An error occurred, please check the log.", "Show Log")
+    .then((selection) => {
+      if (selection === "Show Log") {
+        outputChannel.show();
+      }
+    });
 }

@@ -10,7 +10,7 @@ export class StatusBar {
       vscode.StatusBarAlignment.Right
     );
     this.statusBarItem.text = "MaixCode";
-    this.statusBarItem.command = "maixcode.helloWorld";
+    // this.statusBarItem.command = "maixcode.helloWorld";
     this.statusBarItem.show();
   }
 
@@ -21,7 +21,9 @@ export class StatusBar {
           "statusBarItem.warningBackground"
         );
         this.statusBarItem.text =
-          Instance.instance.deviceService.device?.name || "MaixCode: Online";
+          Instance.instance.deviceManager.getConnectedDevice()
+            ? "MaixCode: Online"
+            : "MaixCode: Offline";
         break;
       case Status.offline:
         this.statusBarItem.text = "MaixCode: Offline";

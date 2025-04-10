@@ -184,16 +184,48 @@ export class ExampleFileProvider
       );
       await vscode.window.showTextDocument(uri);
     } else {
-      const file_content = fs.readFileSync(uri.fsPath, "utf-8");
-      var language = await ExampleFileProvider.guessLanguageType(uri);
+      // 读取文件内容
+      const fileContent = fs.readFileSync(uri.fsPath, "utf-8");
+      
+      // 猜测文件语言类型
+      let language = await ExampleFileProvider.guessLanguageType(uri);
       if (!language) {
         language = "plaintext";
       }
+      
+      // 创建只读文档
       const document = await vscode.workspace.openTextDocument({
         language: language,
-        content: file_content,
+        content: fileContent
       });
-      await vscode.window.showTextDocument(document);
+      
+      // 以只读和预览模式打开文档
+      const options: vscode.TextDocumentShowOptions = {
+        preview: true,
+        preserveFocus: true
+      };
+      
+      const editor = await vscode.window.showTextDocument(document, options);
+      // const relativePath = path.relative(this.cacheDir, uri.fsPath);
+      // uri = uri.with({ path: "/~ " + path.basename(uri.path) });
+      // vscode.workspace.openTextDocument(uri);
+      // 以预览模式打开文件
+      // const options: vscode.TextDocumentShowOptions = {
+      //   preview: true, // 设置为 true 表示以预览模式打开
+      //   // viewColumn: vscode.ViewColumn.Beside, // 在旁边打开
+
+      // };
+      // await vscode.window.showTextDocument(uri, options);
+      // const file_content = fs.readFileSync(uri.fsPath, "utf-8");
+      // var language = await ExampleFileProvider.guessLanguageType(uri);
+      // if (!language) {
+      //   language = "plaintext";
+      // }
+      // const document = await vscode.workspace.openTextDocument({
+      //   language: language,
+      //   content: file_content,
+      // });
+      // await vscode.window.showTextDocument(document);
     }
   }
 

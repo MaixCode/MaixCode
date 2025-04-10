@@ -6,25 +6,31 @@ import { Sidebar } from "./ui/sidebar";
 import { StatusBar } from "./ui/statusbar";
 import { Status } from "./model/status";
 import { ExampleFileProvider } from "./ui/provider/example";
+import { DeviceManager } from "./service/device_manager";
+import { ImageViewer } from "./ui/provider/image_viewer";
+import { ImageService } from "./service/image_service";
 
 export class Instance {
   public static instance: Instance;
 
-  public deviceService: DeviceService;
   public discoveryService: DiscoveryService;
-  public siderbar: Sidebar;
+  public imageService: ImageService;
+  public deviceManager: DeviceManager;
+  public sidebar: Sidebar;
   public statusbar: StatusBar;
   public exampleFileProvider: ExampleFileProvider;
+  public imageViewer: ImageViewer;
   public onStatusChange: (status: Status) => void = () => {};
   private status: Status = Status.offline;
-  // public websocket_service: WebSocketService
 
   private constructor(context: vscode.ExtensionContext) {
-    this.deviceService = new DeviceService(context);
+    this.deviceManager = new DeviceManager(context);
     this.discoveryService = new DiscoveryService(context);
-    this.siderbar = new Sidebar(context);
+    this.imageService = new ImageService(context);
+    this.sidebar = new Sidebar(context);
     this.statusbar = new StatusBar();
     this.exampleFileProvider = new ExampleFileProvider(context);
+    this.imageViewer = new ImageViewer(context);
   }
 
   static initInstance(context: vscode.ExtensionContext) {
@@ -39,6 +45,6 @@ export class Instance {
   }
 
   public getStatus() {
-    return this.status;
+    return this.deviceManager.getStatus();
   }
 }

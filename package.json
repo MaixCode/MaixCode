@@ -79,6 +79,11 @@
         "command": "maixcode.openSourceExample",
         "title": "Open Source File",
         "enablement": "view == maixcode-example && viewItem == file"
+      },
+      {
+        "command": "maixcode.openImageViewer",
+        "title": "Open Image Viewer",
+        "category": "MaixCode"
       }
     ],
     "menus": {
@@ -144,6 +149,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
+    "@types/express": "^5.0.0",
     "@types/mocha": "^10.0.7",
     "@types/multicast-dns": "^7.2.4",
     "@types/node": "20.x",
@@ -166,8 +172,11 @@
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "axios": "^1.7.7",
     "dayjs": "^1.11.12",
+    "express": "^4.21.2",
+    "fabric": "^6.5.3",
     "jszip": "^3.10.1",
     "multicast-dns": "^7.2.5",
+    "sharp": "^0.33.5",
     "ws": "^8.18.0",
     "yamljs": "^0.3.0"
   }

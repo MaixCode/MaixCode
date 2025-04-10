@@ -19,7 +19,7 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
     this.getDevices = () => Instance.instance.discoveryService.getDevices();
   }
 
-  refresh(): void {
+  public refresh() {
     this._onDidChangeTreeData.fire();
   }
   getTreeItem(element: TreeItem) {
@@ -54,7 +54,10 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
         new DeviceManualConnectItem(),
       ];
     } else {
-      return [new DeviceInfoGroupItem()];
+      return [
+        new DeviceTypeItem(DeviceType.localDevice),
+        new DeviceInfoGroupItem(),
+      ];
     }
   }
 
@@ -64,26 +67,23 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
   }
 
   private getInfoItems() {
-    let device = Instance.instance.deviceService.device;
-    let data = Instance.instance.deviceService.getDeviceInfo();
-    if (data === undefined || data.length === 0) {
-      return [new DeviceInfoItem("No device info")];
+    let deviceList = Instance.instance.deviceManager.getConnectedDevice();
+    if (!deviceList) {
+      return [];
     }
-    // decode data json
-    let info = JSON.parse(data);
-    if (!device) {
-      return [new DeviceInfoItem("No device info")];
+    for (let device of deviceList) {
+      let info = device.getDeviceInfo();
+      if (info) {
+        return [
+          new DeviceInfoItem(`Name: ${device.device?.name}`),
+          new DeviceInfoItem(`IP: ${device.device?.ip}`),
+          new DeviceInfoItem(`SysVer: ${info.sysVer}`),
+          new DeviceInfoItem(`MaixPyVer: ${info.maixpyVer}`),
+          new DeviceInfoItem(`ApiKey: ${info.apiKey}`),
+        ];
+      }
     }
-    let infoItems = [];
-    for (let key in info) {
-      infoItems.push(new DeviceInfoItem(`${key}: ${info[key]}`));
-    }
-    return [
-      new DeviceInfoItem(`Name: ${device.name}`),
-      new DeviceInfoItem(`IP: ${device.ip}`),
-      ...infoItems,
-      new DeviceDisconnectItem(),
-    ];
+    return [];
   }
 }
 

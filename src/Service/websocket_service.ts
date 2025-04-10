@@ -1,6 +1,9 @@
 import { Instance } from "../instance";
 import { info, warn, error } from "../logger";
 import ws from "ws";
+import { DeviceInfo } from "../model/device";
+import sharp from "sharp";
+import { EventEmitter } from "events";
 
 const HEADER = Uint8Array.of(172, 190, 203, 202);
 const VERSION = Uint8Array.of(0);
@@ -43,22 +46,23 @@ function packUint32(value: number) {
   return Array.from(new Uint8Array(buffer));
 }
 
-export class WebSocketService {
+export class WebSocketService extends EventEmitter {
   private ws?: ws.WebSocket;
-  private timeOut?: NodeJS.Timeout;
-  public deviceInfo?: string;
+  private hbTimeout?: NodeJS.Timeout;
+  private _isRunning = false;
+  public deviceInfo?: DeviceInfo;
 
   constructor(
     public readonly ip: string,
     public readonly port: number = 7899,
-    private readonly timeoutMs: number = 10000,
-    public hookOpen: () => void = () => {},
-    public hookClose: (code: number, reason: string) => void = () => {},
-    public hookError: (
-      err: Error | { code: number; msg: string }
-    ) => void = () => {},
-    public hookImg: (data: ArrayBuffer) => void = () => {}
-  ) {}
+    private readonly timeoutMs: number = 10000
+  ) {
+    super();
+  }
+
+  public get isRunning() {
+    return this._isRunning;
+  }
 
   public connect() {
     this.ws = new ws.WebSocket(`ws://${this.ip}:${this.port}`);
@@ -82,11 +86,11 @@ export class WebSocketService {
   }
 
   private heartbeat() {
-    if (this.timeOut) {
-      clearTimeout(this.timeOut);
+    if (this.hbTimeout) {
+      clearTimeout(this.hbTimeout);
     }
-    this.timeOut = setTimeout(() => {
-      this.hookError({ code: -1, msg: "Heartbeat timeout" });
+    this.hbTimeout = setTimeout(() => {
+      this.emit("error", { code: -1, msg: "Heartbeat timeout" });
       this.disconnect();
     }, this.timeoutMs);
   }
@@ -106,6 +110,7 @@ export class WebSocketService {
     const checksum = message.reduce((a, b) => a + b, 0) % 256;
     return new Uint8Array([...message, checksum]);
   }
+
   private sendMessage(cmd: number, data: number | string | Buffer) {
     if (!this.ws) {
       warn("WebSocket is not connected");
@@ -115,11 +120,13 @@ export class WebSocketService {
     this.ws.send(WebSocketService.packMessage(cmd, data));
     this.heartbeat();
   }
+
   private onOpen() {
     this.sendMessage(COMMAND.Auth, "maixvision");
-    this.hookOpen();
+    this.emit("open");
     this.heartbeat();
   }
+
   private onMessage(message: ArrayBuffer) {
     const result = this.unpackMessage(message);
     if (result) {
@@ -127,16 +134,23 @@ export class WebSocketService {
       this.heartbeat();
     }
   }
+
   private onError(err: Error) {
     error(err);
-    this.hookError(err);
+    this.emit("error", err);
   }
+
   private onClose(code: number, reason: string) {
-    if (this.timeOut) {
-      clearTimeout(this.timeOut);
+    if (this.hbTimeout) {
+      clearTimeout(this.hbTimeout);
     }
-    this.hookClose(code, reason);
+    this.emit("close", code, reason);
   }
+
+  public get isConnected() {
+    return this.ws && this.ws.readyState === ws.OPEN;
+  }
+
   private unpackMessage(
     message: ArrayBuffer,
     wishCmd?: number
@@ -169,8 +183,10 @@ export class WebSocketService {
     const content = data.slice(10, 10 + dataLen - 3);
     return { cmd, content };
   }
+
   private handleCommand(cmd: number, content: Uint8Array) {
     info(`Receive message: cmd: ${cmd}, content: ${content}`);
+    this.emit("message", { cmd, content });
     let table: { [key: number]: (content: Uint8Array) => void } = {
       [COMMAND.AuthAck]: this.authAckCommand,
       [COMMAND.RunAck]: this.runAckCommand,
@@ -192,7 +208,9 @@ export class WebSocketService {
       warn(`Unknown command: cmd: ${cmd}, content: ${content}`);
     }
   }
+
   private authAckCommand(content: Uint8Array) {
+    this.emit("authAck", content);
     const isSuccess = content[0] === 1;
     if (isSuccess) {
       info("Connect device successful");
@@ -202,56 +220,49 @@ export class WebSocketService {
         content.slice(1)
       ).toString()}`;
       this.disconnect();
-      error(msg);
-      this.hookError({ code: -2, msg });
+      this.emit("error", { code: -2, msg });
     }
     return isSuccess;
   }
+
   private runAckCommand(content: Uint8Array) {
+    this.emit("runAck", content);
     const isSuccess = content[0] === 1;
     if (isSuccess) {
       info("Start running...");
+      this._isRunning = true;
+      this.emit("run");
     } else {
       const msg = `Device execute code failed: ${Buffer.from(
         content.slice(1)
       )}`;
       error(msg);
-      this.hookError({ code: -1, msg });
+      this.emit("error", { code: -1, msg });
     }
   }
+
   private outputCommand(content: Uint8Array) {
-    const data = Buffer.from(content).toString();
+    this.emit("output", Buffer.from(content).toString());
   }
+
   private imgCommand(content: Uint8Array) {
-    this.hookImg(content.slice(1));
-    // sharp(content.slice(1))
-    //   .raw()
-    //   .ensureAlpha()
-    //   .toBuffer({ resolveWithObject: true })
-    //   .then(({ data, info }) => {
-    //     const rsp = {
-    //       data: data.buffer,
-    //       type: content[0] === 1 ? "jpeg" : "png",
-    //       width: info.width,
-    //       height: info.height,
-    //     };
-    //   });
+    this.emit("img", content.slice(1));
   }
+
   private stopAckCommand(content: Uint8Array) {
+    this.emit("stopAck", content);
     const isSuccess = content[0] === 1;
-    const rsp = isSuccess
-      ? { code: 0, msg: "Stop running success" }
-      : {
-          code: -1,
-          msg: `Stop running failed: ${Buffer.from(
-            content.slice(1)
-          ).toString()}`,
-        };
+    if (isSuccess) {
+      this._isRunning = false;
+      this.emit("stop");
+    }
   }
+
   private finishCommand(content: Uint8Array) {
     const isSuccess = content.slice(0, 4).every((a) => a === 0);
     let rsp;
     if (isSuccess) {
+      this._isRunning = false;
       rsp = { code: 0, msg: "Program exited" };
     } else {
       const view = new DataView(content.slice(0, 4).buffer, 0);
@@ -262,16 +273,18 @@ export class WebSocketService {
       }`;
       rsp = { code, msg: msg2 };
     }
+    this.emit("finish", rsp);
   }
+
   private msgCommand(content: Uint8Array) {
-    return Buffer.from(content).toString();
+    this.emit("msg", Buffer.from(content).toString());
   }
+
   private deviceInfoAckCommand(content: Uint8Array) {
-    // return Buffer.from(content).toString();
-    // decode string to object(json)
-    this.deviceInfo = Buffer.from(content).toString();
-    Instance.instance.siderbar.refresh();
+    this.deviceInfo = DeviceInfo.fromText(Buffer.from(content).toString());
+    this.emit("deviceInfo", this.deviceInfo);
   }
+
   private imgFormatCommand(content: Uint8Array) {
     const isSuccess = content[0] === 1;
     const rsp = isSuccess
@@ -285,7 +298,9 @@ export class WebSocketService {
           format: "",
           msg: Buffer.from(content.slice(2)).toString(),
         };
+    this.emit("imgFormat", rsp);
   }
+
   private installAppAckCommand(content: Uint8Array) {
     const isSuccess = content[1] === 0;
     const rsp = isSuccess
@@ -299,5 +314,14 @@ export class WebSocketService {
           progress: 0,
           msg: Buffer.from(content.slice(2)).toString(),
         };
+    this.emit("installApp", rsp);
+  }
+
+  public runCode(code: string) {
+    this.sendMessage(COMMAND.Run, code);
+  }
+
+  public stopCode() {
+    this.sendMessage(COMMAND.Stop, "");
   }
 }
