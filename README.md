@@ -1,5 +1,8 @@
 # MaixCode VS Code 扩展
 
+[![DeepWiki Badge](https://img.shields.io/badge/More-DeepWiki-blue)
+](https://deepwiki.com/MaixCode/MaixCode)
+
 MaixCode 是一个用于 MaixCAM 设备开发的 VSCode 扩展，让您能够方便地开发、调试和运行 MaixPy 代码。通过此扩展，您可以发现网络上的 MaixCAM 设备，连接设备，运行和调试 Python 代码，并查看实时图像输出。
 
 ## 功能特性
