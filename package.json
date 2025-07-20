@@ -33,11 +33,13 @@
       "maixcode-mainview": [
         {
           "id": "maixcode-devices",
-          "name": "Devices"
+          "name": "Devices",
+          "icon": "$(vm-outline)"
         },
         {
           "id": "maixcode-example",
-          "name": "Example"
+          "name": "Example",
+          "icon": "$(folder-library)"
         }
       ]
     },
@@ -53,7 +55,7 @@
         "category": "MaixCode"
       },
       {
-        "command": "maixcode.deviceConnect",
+        "command": "maixcode.connectDevice",
         "title": "Connect Device",
         "icon": "$(debug-disconnect)",
         "category": "MaixCode"
@@ -101,7 +103,7 @@
       ],
       "view/item/context": [
         {
-          "command": "maixcode.deviceConnect",
+          "command": "maixcode.connectDevice",
           "when": "viewItem == maixcode-deviceIp",
           "group": "inline"
         },
@@ -135,7 +137,17 @@
           }
         }
       }
-    ]
+    ],
+    "configuration": {
+      "title": "MaixCode",
+      "properties": {
+        "maixcode.enableDeviceDiscovery": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable device discovery"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "yarn run package",

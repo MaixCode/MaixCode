@@ -4,6 +4,7 @@ import * as yaml from "yamljs";
 import JSZip from "jszip";
 import * as fs from "fs";
 import * as path from "path";
+import { Commands } from "../../constants";
 
 export class ExampleFileProvider
   implements vscode.TreeDataProvider<vscode.TreeItem>
@@ -26,30 +27,9 @@ export class ExampleFileProvider
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
     }
-    // this.refresh();
-    context.subscriptions.push(
-      vscode.commands.registerCommand("maixcode.refreshExamples", () =>
-        this.refresh()
-      ),
-      vscode.commands.registerCommand("maixcode.openExample", (arg) => {
-        if (arg instanceof vscode.Uri) {
-          this.openFile(arg);
-        } else {
-          vscode.window.showErrorMessage("Invalid file URI");
-          // TODO: Select file by user
-        }
-      }),
-      vscode.commands.registerCommand("maixcode.openSourceExample", (arg) => {
-        if (arg instanceof vscode.TreeItem) {
-          this.openFile(arg.resourceUri!, true);
-        } else {
-          vscode.window.showErrorMessage("Invalid file URI");
-        }
-      })
-    );
   }
 
-  async refresh(): Promise<void> {
+  public async refresh(): Promise<void> {
     /* Clear cache */
     await this.downloadAndExtract();
     this._onDidChangeTreeData.fire();
@@ -174,7 +154,7 @@ export class ExampleFileProvider
     return undefined;
   }
 
-  private async openFile(
+  public async openFile(
     uri: vscode.Uri,
     source: boolean = false
   ): Promise<void> {
@@ -186,25 +166,25 @@ export class ExampleFileProvider
     } else {
       // 读取文件内容
       const fileContent = fs.readFileSync(uri.fsPath, "utf-8");
-      
+
       // 猜测文件语言类型
       let language = await ExampleFileProvider.guessLanguageType(uri);
       if (!language) {
         language = "plaintext";
       }
-      
+
       // 创建只读文档
       const document = await vscode.workspace.openTextDocument({
         language: language,
-        content: fileContent
+        content: fileContent,
       });
-      
+
       // 以只读和预览模式打开文档
       const options: vscode.TextDocumentShowOptions = {
         preview: true,
-        preserveFocus: true
+        preserveFocus: true,
       };
-      
+
       const editor = await vscode.window.showTextDocument(document, options);
       // const relativePath = path.relative(this.cacheDir, uri.fsPath);
       // uri = uri.with({ path: "/~ " + path.basename(uri.path) });

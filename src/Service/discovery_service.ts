@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import os from "os";
 import { DeviceAddr } from "../model/device";
 import { Instance } from "../instance";
+import { Commands } from "../constants";
 
 export class DiscoveryService {
   // private devices: Device[] = [];
@@ -21,11 +22,7 @@ export class DiscoveryService {
     public readonly timeoutMs: number = 4000,
     public onDeviceChanged: (device: DeviceAddr[]) => void = () => {},
     public connectCallback: (device: DeviceAddr) => void = () => {}
-  ) {
-    context.subscriptions.push(
-      vscode.commands.registerCommand("maixcode.discoverDevices", this.discover)
-    );
-  }
+  ) {}
 
   public stop(): void {
     if (this.discoverTimeout) {
@@ -82,7 +79,7 @@ export class DiscoveryService {
           //   });
           this.devices.push({ device: device, lastSeen: Date.now() });
           // this.onDeviceChanged(this.devices.map((device) => device.device));
-          Instance.instance.siderbar.refresh();
+          Instance.instance.sidebar.refresh();
         }
       }
     };
@@ -135,7 +132,7 @@ export class DiscoveryService {
     if (_device.length !== this.devices.length) {
       this.devices = _device;
       // this.onDeviceChanged(this.devices.map((device) => device.device));
-      Instance.instance.siderbar.refresh();
+      Instance.instance.sidebar.refresh();
     }
   }
 

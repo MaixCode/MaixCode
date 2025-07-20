@@ -30,7 +30,7 @@ export class Instance {
     this.sidebar = new Sidebar(context);
     this.statusbar = new StatusBar();
     this.exampleFileProvider = new ExampleFileProvider(context);
-    this.imageViewer = new ImageViewer(context);
+    this.imageViewer = new ImageViewer(context, this.imageService);
   }
 
   static initInstance(context: vscode.ExtensionContext) {

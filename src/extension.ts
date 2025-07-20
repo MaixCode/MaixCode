@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
 import { initCommands } from "./command";
-import { initLogger, log } from "./logger";
-import { DebugAdapterFactory } from "./debugger";
+import { error, initLogger, log } from "./logger";
+import { DebugAdapterFactory } from "./debugger/debugger";
 import { Instance } from "./instance";
+import { DebugTypeName } from "./constants";
 
 export function activate(context: vscode.ExtensionContext) {
   // Initialize logger
@@ -14,18 +15,19 @@ export function activate(context: vscode.ExtensionContext) {
 
   Instance.instance.discoveryService.start();
 
-  // const imageViewer = new ImageViewer(context);
-  // imageViewer.showWindow();
+  // Instance.instance.imageViewer.showWindow();
 
   // Activate the debug adapter
   let factory = new DebugAdapterFactory();
   context.subscriptions.push(
-    vscode.debug.registerDebugAdapterDescriptorFactory("maixpy", factory)
+    vscode.debug.registerDebugAdapterDescriptorFactory(DebugTypeName, factory)
   );
   vscode.window.registerTreeDataProvider(
     "maixcode-example",
     Instance.instance.exampleFileProvider
   );
+
+  initCommands(context);
 
   // initCommands(context, [
   //   {

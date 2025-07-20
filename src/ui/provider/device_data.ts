@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { TreeItem } from "vscode";
 import { Instance } from "../../instance";
 import { Status } from "../../model/status";
+import { Commands } from "../../constants";
 
 enum DeviceType {
   localDevice = "Local Device",
@@ -32,6 +33,9 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
     }
     if (element instanceof DeviceTypeItem) {
       if (element.type === DeviceType.localDevice) {
+        if (!this.getDevices().length) {
+          return Promise.resolve([new DeviceBlankItem()]);
+        }
         return Promise.resolve(
           Array.from(
             new Set(this.getDevices().map((device) => device.name))
@@ -142,7 +146,7 @@ export class DeviceManualConnectItem extends TreeItem {
   iconPath = new vscode.ThemeIcon("debug-disconnect");
 
   command = {
-    command: "maixcode.deviceConnect",
+    command: Commands.connectDevice,
     title: "Connect",
   };
 }
@@ -157,7 +161,13 @@ export class DeviceDisconnectItem extends TreeItem {
   iconPath = new vscode.ThemeIcon("debug-disconnect");
 
   command = {
-    command: "maixcode.deviceDisconnect",
+    command: Commands.disconnectDevice,
     title: "Disconnect",
   };
+}
+
+export class DeviceBlankItem extends TreeItem {
+  constructor() {
+    super("No device found");
+  }
 }

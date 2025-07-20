@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { DeviceDataProvider, DeviceIpItem } from "./provider/device_data";
+import { Commands } from "../constants";
 
 export class Sidebar {
   private deviceDataProvider: DeviceDataProvider;
@@ -9,11 +10,11 @@ export class Sidebar {
       "maixcode-devices",
       this.deviceDataProvider
     );
-    context.subscriptions.push(
-      vscode.commands.registerCommand("maixcode.refreshDevices", () => {
-        this.deviceDataProvider.refresh();
-      })
-    );
+    // context.subscriptions.push(
+    //   vscode.commands.registerCommand(Commands.refreshDeviceData, () => {
+    //     this.deviceDataProvider.refresh();
+    //   })
+    // );
     // setInterval(() => {
     //   this.deviceDataProvider.refresh();
     // }, 2000);

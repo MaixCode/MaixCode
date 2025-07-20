@@ -11,16 +11,19 @@ export class ImageViewer {
   private imageType: ImageType = ImageType.JPEG;
   private refreshInterval: NodeJS.Timeout | undefined;
   private readonly serverUrl: string = "http://localhost:9090";
-  private imageService: ImageService;
+  // private imageService: ImageService;
 
-  constructor(private readonly context: vscode.ExtensionContext) {
-    this.imageService = Instance.instance.imageService;
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private imageService: ImageService
+  ) {
+    // this.imageService = Instance.instance.imageService;
 
-    context.subscriptions.push(
-      vscode.commands.registerCommand("maixcode.openImageViewer", () => {
-        this.showWindow();
-      })
-    );
+    // context.subscriptions.push(
+    //   vscode.commands.registerCommand("maixcode.openImageViewer", () => {
+    //     this.showWindow();
+    //   })
+    // );
   }
 
   public async showWindow(): Promise<void> {
@@ -378,7 +381,9 @@ export class ImageViewer {
   }
 
   private updateDeviceList(): void {
-    if (!this.imagePanel) return;
+    if (!this.imagePanel) {
+      return;
+    }
 
     const devices = Instance.instance.deviceManager.getConnectedDevice();
     const deviceList = devices.map((device) => ({
