@@ -15,5 +15,4 @@ export namespace Commands {
 
   // Example Commands
   export const openExample = "maixcode.openExample";
-  export const openExampleFile = "maixcode.openExampleFile";
 }

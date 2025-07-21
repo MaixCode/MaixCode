@@ -33,7 +33,7 @@
       "maixcode-mainview": [
         {
           "id": "maixcode-devices",
-          "name": "Devices",
+          "name": "Device",
           "icon": "$(vm-outline)"
         },
         {
@@ -45,29 +45,31 @@
     },
     "commands": [
       {
-        "command": "maixcode.helloWorld",
-        "title": "Test",
+        "command": "maixcode.connectDevice",
+        "title": "Connect Device",
+        "icon": "$(vm-connect)",
         "category": "MaixCode"
       },
       {
-        "command": "maixcode.discoverDevices",
+        "command": "maixcode.disconnectDevice",
+        "title": "Disconnect Device",
+        "icon": "$(debug-disconnect)",
+        "category": "MaixCode"
+      },
+      
+      {
+        "command": "maixcode.discoverDevice",
         "title": "Discover Devices",
         "category": "MaixCode"
       },
       {
-        "command": "maixcode.connectDevice",
-        "title": "Connect Device",
-        "icon": "$(debug-disconnect)",
-        "category": "MaixCode"
-      },
-      {
-        "command": "maixcode.refreshDevices",
+        "command": "maixcode.refreshDeviceData",
         "title": "Refresh Devices",
         "icon": "$(refresh)",
         "category": "MaixCode"
       },
       {
-        "command": "maixcode.refreshExamples",
+        "command": "maixcode.refreshExample",
         "title": "Refresh Examples",
         "icon": "$(refresh)",
         "category": "MaixCode"
@@ -78,11 +80,6 @@
         "category": "MaixCode"
       },
       {
-        "command": "maixcode.openSourceExample",
-        "title": "Open Source File",
-        "enablement": "view == maixcode-example && viewItem == file"
-      },
-      {
         "command": "maixcode.openImageViewer",
         "title": "Open Image Viewer",
         "category": "MaixCode"
@@ -91,12 +88,12 @@
     "menus": {
       "view/title": [
         {
-          "command": "maixcode.refreshDevices",
+          "command": "maixcode.refreshDeviceData",
           "when": "view == maixcode-devices",
           "group": "navigation"
         },
         {
-          "command": "maixcode.refreshExamples",
+          "command": "maixcode.refreshExample",
           "when": "view == maixcode-example",
           "group": "navigation"
         }
@@ -106,10 +103,6 @@
           "command": "maixcode.connectDevice",
           "when": "viewItem == maixcode-deviceIp",
           "group": "inline"
-        },
-        {
-          "command": "maixcode.openSourceExample",
-          "when": "view == maixcode-example && viewItem == file"
         }
       ]
     },

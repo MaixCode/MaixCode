@@ -30,6 +30,12 @@ export function initCommands(context: vscode.ExtensionContext) {
       },
     },
     {
+      name: Commands.refreshExample,
+      func: () => {
+        Instance.instance.exampleFileProvider.refresh();
+      },
+    },
+    {
       name: Commands.openExample,
       func: (arg: any) => {
         if (arg instanceof vscode.Uri) {
@@ -42,7 +48,9 @@ export function initCommands(context: vscode.ExtensionContext) {
     },
     {
       name: Commands.openImageViewer,
-      func: () => {},
+      func: () => {
+        Instance.instance.imageViewer.showWindow();
+      },
     },
     // {
     //   name: Commands.refreshDeviceData,

@@ -147,6 +147,7 @@ export class DeviceManager {
       this.currentDevice = deviceService;
     }
     deviceService.connect();
+    Instance.instance.sidebar.refresh();
   }
 
   public getDeviceList() {
