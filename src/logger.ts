@@ -7,6 +7,12 @@ export function initLogger(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel("MaixCode");
 }
 
+export function debug(message: string) {
+  outputChannel.appendLine(
+    `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Debug] ${message}`
+  );
+}
+
 export function log(message: string) {
   outputChannel.appendLine(
     `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Info] ${message}`
