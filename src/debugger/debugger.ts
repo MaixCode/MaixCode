@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { MaixPyDebugSession } from "./debugger/session";
-import { FileAccessor } from "./debugger/runtime";
+import { MaixPyDebugSession } from "./session";
+import { FileAccessor } from "./runtime";
 
 function pathToUri(path: string) {
   try {
