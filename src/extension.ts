@@ -22,10 +22,9 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.debug.registerDebugAdapterDescriptorFactory(DebugTypeName, factory)
   );
-  vscode.window.registerTreeDataProvider(
-    "maixcode-example",
-    Instance.instance.exampleFileProvider
-  );
+  
+  // ExampleFileProvider now creates its own TreeView internally
+  // No need to register it manually anymore
 
   initCommands(context);
 

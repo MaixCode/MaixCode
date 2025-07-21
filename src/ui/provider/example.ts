@@ -5,6 +5,19 @@ import JSZip from "jszip";
 import * as fs from "fs";
 import * as path from "path";
 import { Commands } from "../../constants";
+import { info } from "../../logger";
+
+class ExampleDocumentContentProvider implements vscode.TextDocumentContentProvider {
+  private documents = new Map<string, string>();
+
+  provideTextDocumentContent(uri: vscode.Uri): string {
+    return this.documents.get(uri.toString()) || '';
+  }
+
+  setContent(uri: vscode.Uri, content: string): void {
+    this.documents.set(uri.toString(), content);
+  }
+}
 
 export class ExampleFileProvider
   implements vscode.TreeDataProvider<vscode.TreeItem>
@@ -19,6 +32,8 @@ export class ExampleFileProvider
   private sipeedCdnBaseUrl = "https://cdn.sipeed.com/maixvision/examples";
   private cacheDir: string;
   private cacheFile: string;
+  private documentProvider = new ExampleDocumentContentProvider();
+  private treeView: vscode.TreeView<vscode.TreeItem>;
 
   constructor(private context: vscode.ExtensionContext) {
     // this.cacheDir = path.join(context.globalStoragePath, "cache");
@@ -27,12 +42,100 @@ export class ExampleFileProvider
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
     }
+
+    // 注册虚拟文档内容提供器
+    context.subscriptions.push(
+      vscode.workspace.registerTextDocumentContentProvider('example', this.documentProvider)
+    );
+
+    // 创建 TreeView
+    this.treeView = vscode.window.createTreeView('maixcode-example', {
+      treeDataProvider: this,
+      showCollapseAll: true,
+      canSelectMany: false,
+      dragAndDropController: undefined // 可以在未来添加拖拽支持
+    });
+
+    // 注册 TreeView 到 context 的 subscriptions
+    context.subscriptions.push(this.treeView);
+
+    // 注册 TreeView 事件处理器
+    this.setupTreeViewEvents();
   }
 
   public async refresh(): Promise<void> {
     /* Clear cache */
+    info("[ExampleFileProvider] Refreshing example files...");
     await this.downloadAndExtract();
     this._onDidChangeTreeData.fire();
+  }
+
+  private setupTreeViewEvents(): void {
+    // 处理 TreeView 选择变化事件
+    this.treeView.onDidChangeSelection(async (e) => {
+      if (e.selection.length > 0) {
+        const selectedItem = e.selection[0];
+        if (selectedItem.contextValue === 'file' && selectedItem.resourceUri) {
+          await this.openFile(selectedItem.resourceUri);
+        }
+      }
+    });
+    // 处理 TreeView 可见性变化事件
+    // this.treeView.onDidChangeVisibility((e) => {
+    //   if (e.visible) {
+    //     info("[ExampleFileProvider] TreeView became visible");
+    //     // 可以在这里触发数据刷新或其他操作
+    //   }
+    // });
+
+    // 处理 TreeView 聚焦变化事件
+    // this.treeView.onDidChangeCheckboxState && this.treeView.onDidChangeCheckboxState((e) => {
+    //   // 如果需要复选框功能，可以在这里处理
+    //   info("[ExampleFileProvider] Checkbox state changed");
+    // });
+  }
+
+  // 添加方便的方法来控制 TreeView
+  public async reveal(element: vscode.TreeItem): Promise<void> {
+    try {
+      await this.treeView.reveal(element, { 
+        select: true, 
+        focus: true,
+        expand: true
+      });
+    } catch (error) {
+      console.error('Error revealing tree item:', error);
+    }
+  }
+
+  public get selection(): readonly vscode.TreeItem[] {
+    return this.treeView.selection;
+  }
+
+  public get visible(): boolean {
+    return this.treeView.visible;
+  }
+
+  // 设置 TreeView 的标题和描述
+  public updateTreeViewDisplay(title?: string, description?: string): void {
+    if (title) {
+      this.treeView.title = title;
+    }
+    if (description) {
+      this.treeView.description = description;
+    }
+  }
+
+  // 展开或折叠所有节点
+  public async expandAll(): Promise<void> {
+    // 这需要遍历所有节点并展开它们
+    // 实际实现会依赖于具体的文件结构
+    this._onDidChangeTreeData.fire();
+  }
+
+  // 获取 TreeView 实例
+  public getTreeView(): vscode.TreeView<vscode.TreeItem> {
+    return this.treeView;
   }
 
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
@@ -173,39 +276,25 @@ export class ExampleFileProvider
         language = "plaintext";
       }
 
-      // 创建只读文档
-      const document = await vscode.workspace.openTextDocument({
-        language: language,
-        content: fileContent,
-      });
+      // 创建虚拟文档 URI
+      const virtualUri = vscode.Uri.parse(`example:${path.basename(uri.fsPath)}?${encodeURIComponent(uri.fsPath)}`);
+      
+      // 设置虚拟文档内容
+      this.documentProvider.setContent(virtualUri, fileContent);
 
-      // 以只读和预览模式打开文档
+      // 打开虚拟文档
+      const document = await vscode.workspace.openTextDocument(virtualUri);
+      
+      // 设置语言模式
+      // await vscode.languages.setTextDocumentLanguage(document, language);
+
+      // 以预览模式打开文档
       const options: vscode.TextDocumentShowOptions = {
         preview: true,
         preserveFocus: true,
       };
 
-      const editor = await vscode.window.showTextDocument(document, options);
-      // const relativePath = path.relative(this.cacheDir, uri.fsPath);
-      // uri = uri.with({ path: "/~ " + path.basename(uri.path) });
-      // vscode.workspace.openTextDocument(uri);
-      // 以预览模式打开文件
-      // const options: vscode.TextDocumentShowOptions = {
-      //   preview: true, // 设置为 true 表示以预览模式打开
-      //   // viewColumn: vscode.ViewColumn.Beside, // 在旁边打开
-
-      // };
-      // await vscode.window.showTextDocument(uri, options);
-      // const file_content = fs.readFileSync(uri.fsPath, "utf-8");
-      // var language = await ExampleFileProvider.guessLanguageType(uri);
-      // if (!language) {
-      //   language = "plaintext";
-      // }
-      // const document = await vscode.workspace.openTextDocument({
-      //   language: language,
-      //   content: file_content,
-      // });
-      // await vscode.window.showTextDocument(document);
+      await vscode.window.showTextDocument(document, options);
     }
   }
 
@@ -226,14 +315,14 @@ export class ExampleFileProvider
       );
       treeItem.contextValue = fileTree[key] ? "folder" : "file";
       treeItem.resourceUri = vscode.Uri.file(filePath);
+      
       if (!fileTree[key]) {
-        treeItem.command = {
-          command: "maixcode.openExample",
-          title: "Open File",
-          arguments: [treeItem.resourceUri],
-        };
+        // 文件项 - 不设置命令，通过 TreeView 选择事件处理
+        treeItem.tooltip = `Open file: ${key}`;
         files.push(treeItem);
       } else {
+        // 文件夹项
+        treeItem.tooltip = `Folder: ${key}`;
         folders.push(treeItem);
       }
     }
