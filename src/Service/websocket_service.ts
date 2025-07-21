@@ -1,5 +1,5 @@
 import { Instance } from "../instance";
-import { info, warn, error } from "../logger";
+import { debug, info, warn, error } from "../logger";
 import ws from "ws";
 import { DeviceInfo } from "../model/device";
 import sharp from "sharp";
@@ -116,7 +116,7 @@ export class WebSocketService extends EventEmitter {
       warn("WebSocket is not connected");
       return;
     }
-    info(`Send message: cmd: ${cmd}, data: ${data}`);
+    debug(`Send message: cmd: ${cmd}, data: ${data}`);
     this.ws.send(WebSocketService.packMessage(cmd, data));
     this.heartbeat();
   }
@@ -185,7 +185,7 @@ export class WebSocketService extends EventEmitter {
   }
 
   private handleCommand(cmd: number, content: Uint8Array) {
-    info(`Receive message: cmd: ${cmd}, content: ${content}`);
+    debug(`Receive message: cmd: ${cmd}, content: ${content}`);
     this.emit("message", { cmd, content });
     let table: { [key: number]: (content: Uint8Array) => void } = {
       [COMMAND.AuthAck]: this.authAckCommand,
@@ -215,6 +215,7 @@ export class WebSocketService extends EventEmitter {
     if (isSuccess) {
       info("Connect device successful");
       this.sendMessage(COMMAND.DeviceInfo, "");
+      Instance.instance.sidebar.refresh();
     } else {
       const msg = `Connect device failed: ${Buffer.from(
         content.slice(1)
@@ -283,6 +284,7 @@ export class WebSocketService extends EventEmitter {
   private deviceInfoAckCommand(content: Uint8Array) {
     this.deviceInfo = DeviceInfo.fromText(Buffer.from(content).toString());
     this.emit("deviceInfo", this.deviceInfo);
+    Instance.instance.sidebar.refresh();
   }
 
   private imgFormatCommand(content: Uint8Array) {
