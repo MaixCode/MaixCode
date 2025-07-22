@@ -1,46 +1,49 @@
 import * as vscode from "vscode";
 import dayjs from "dayjs";
 
-let outputChannel: vscode.OutputChannel;
+let outputChannel: vscode.LogOutputChannel;
 
 export function initLogger(context: vscode.ExtensionContext) {
-  outputChannel = vscode.window.createOutputChannel("MaixCode");
+  outputChannel = vscode.window.createOutputChannel("MaixCode", {log: true});
 }
 
 export function debug(message: string) {
-  outputChannel.appendLine(
-    `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Debug] ${message}`
-  );
+  outputChannel.debug(message);
+  // console.debug(`[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Debug] ${message}`);
 }
 
 export function log(message: string) {
-  outputChannel.appendLine(
-    `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Info] ${message}`
-  );
+  outputChannel.info(message);
 }
 
 export function info(message: string) {
-  outputChannel.appendLine(
-    `[${dayjs().format("YYYY-MM-DD h:mm:ss")}][Info] ${message}`
-  );
+  outputChannel.info(message);
 }
 
 export function warn(message: string) {
-  outputChannel.appendLine(
-    `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Warning] ${message}`
-  );
+  outputChannel.warn(message);
+  console.warn(`[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Warn] ${message}`);
 }
 
 export function error(message: string | Error) {
+  // if (typeof message === "string") {
+  //   outputChannel.appendLine(
+  //     `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] ${message}`
+  //   );
+  // } else {
+  //   outputChannel.appendLine(
+  //     `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] Catch an error: ${
+  //       message.message
+  //     }, \nstack: ${message.stack}`
+  //   );
+  // }
   if (typeof message === "string") {
-    outputChannel.appendLine(
-      `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] ${message}`
-    );
+    outputChannel.error(message);
+    console.error(`[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] ${message}`);
   } else {
-    outputChannel.appendLine(
-      `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] Catch an error: ${
-        message.message
-      }, \nstack: ${message.stack}`
+    outputChannel.error(`Catch an error: ${message.message}, \nstack: ${message.stack}`);
+    console.error(
+      `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] Catch an error: ${message.message}, \nstack: ${message.stack}`
     );
   }
   vscode.window
