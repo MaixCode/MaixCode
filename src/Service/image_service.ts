@@ -493,7 +493,11 @@ export class ImageService {
       metadata
     };
     
-    this.imageMap.set(key, data);
+    if (this.imageMap.get(key)?.buffer === imageData) {
+      // log(`Image for key ${key} is unchanged, skipping update.`);
+      return;
+    }
+    // this.imageMap.set(key, data);
 
     // 通知所有WebSocket客户端
     this.wss.clients.forEach((client) => {
