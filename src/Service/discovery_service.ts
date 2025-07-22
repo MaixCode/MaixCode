@@ -1,4 +1,4 @@
-import { log } from "../logger";
+import { log, warn, error } from "../logger";
 import multicastDns from "multicast-dns";
 import * as vscode from "vscode";
 import os from "os";
@@ -104,14 +104,14 @@ export class DiscoveryService {
           });
           mdns.on("response", this.createResponseHandler(mdns));
           mdns.on("error", (err) => {
-            log(`mDNS error: ${err}`);
+            error(`mDNS error: ${err}`);
             this.interfacePair = this.interfacePair.filter(
               (iface) => iface.ip !== info.address
             );
             mdns.destroy();
           });
-          mdns.on("warning", (warn) => {
-            log(`mDNS warning: ${warn}`);
+          mdns.on("warning", (warnMsg) => {
+            warn(`mDNS warning: ${warnMsg}`);
           });
           this.interfacePair.push({
             ip: info.address,

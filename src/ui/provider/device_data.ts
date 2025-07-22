@@ -45,7 +45,10 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
     } else if (element instanceof DeviceGroupItem) {
       return Promise.resolve(this.getIpItems(element.name));
     } else if (element instanceof DeviceInfoGroupItem) {
-      return Promise.resolve(this.getInfoItems());
+      return Promise.resolve([
+        ...this.getInfoItems(),
+        new DeviceDisconnectItem(),
+      ]);
     }
     return Promise.resolve([]);
   }
@@ -67,7 +70,7 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
 
   private getIpItems(name: string) {
     let devices = this.getDevices().filter((device) => device.name === name);
-    return devices.map((device) => new DeviceIpItem(device.ip));
+    return devices.map((device) => new DeviceIpItem(device.ip, device.name));
   }
 
   private getInfoItems() {
@@ -110,7 +113,7 @@ export class DeviceTypeItem extends TreeItem {
 }
 
 export class DeviceIpItem extends TreeItem {
-  constructor(public ip: string) {
+  constructor(public ip: string, public name: string) {
     super(ip);
   }
 
@@ -133,7 +136,7 @@ export class DeviceInfoItem extends TreeItem {
   }
 
   contextValue = "maixcode-deviceInfo";
-  // iconPath = new vscode.ThemeIcon("info");
+  iconPath = new vscode.ThemeIcon("info");
 }
 
 export class DeviceManualConnectItem extends TreeItem {
