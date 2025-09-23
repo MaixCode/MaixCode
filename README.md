@@ -5,6 +5,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue.svg)](https://marketplace.visualstudio.com/items?itemName=Cranyozen.maixcode)
 
+> **Languages**: [English](README.md) | [简体中文](README_zh.md)
+
 <div align="center">
   <img src="resources/maixcode.svg" alt="MaixCode Logo" width="128" height="128">
 </div>
