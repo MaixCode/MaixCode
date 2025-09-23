@@ -4,6 +4,7 @@
   "description": "MaixVision on VSCode",
   "version": "0.0.1",
   "publisher": "Cranyozen",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.92.0"
   },
