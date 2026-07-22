@@ -3,11 +3,23 @@ import { DeviceService } from "../service/device_service";
 import { Status } from "../model/status";
 import { DeviceTransport } from "../ports/device_transport";
 import { RunSession } from "../service/run_session";
+import { error as logError, formatUnknown, log, warn } from "../logger";
 
 export interface FileAccessor {
   isWindows: boolean;
   readFile(path: string): Promise<Uint8Array>;
   writeFile(path: string, contents: Uint8Array): Promise<void>;
+}
+
+function isDeviceService(
+  device: DeviceService | DeviceTransport
+): device is DeviceService {
+  return (
+    typeof device === "object" &&
+    device !== null &&
+    "status" in device &&
+    typeof (device as DeviceService).connect === "function"
+  );
 }
 
 export class MaixPyRuntime extends EventEmitter {
@@ -20,69 +32,158 @@ export class MaixPyRuntime extends EventEmitter {
 
   constructor(private fileAccessor: FileAccessor) {
     super();
+    log("[MaixPyRuntime] created");
   }
 
-  /**
-   * Start executing the given program on a connected device.
-   * Accepts DeviceService or a bare DeviceTransport.
-   */
   public async start(
     program: string,
     device: DeviceService | DeviceTransport
   ): Promise<void> {
-    this.clearSession();
+    log(`[MaixPyRuntime] start begin program=${program}`);
+    try {
+      this.detachSessionOnly();
 
-    const transport = this.resolveTransport(device);
-    if (!transport || !transport.isConnected) {
-      this.sendEvent("output", "err", "Device is not connected");
-      this.sendEvent("end");
-      return;
-    }
+      const transport = this.resolveTransport(device);
+      log(
+        `[MaixPyRuntime] transport resolved: ${
+          transport
+            ? `ip=${transport.ip} isConnected=${transport.isConnected} isRunning=${transport.isRunning} hasRunCode=${typeof transport.runCode === "function"}`
+            : "undefined"
+        }`
+      );
 
-    if (device instanceof DeviceService && device.status === Status.offline) {
-      this.sendEvent("output", "err", "Device is not connected");
-      this.sendEvent("end");
-      return;
-    }
-
-    const sourceFile = await this.loadSource(
-      this.normalizePathAndCasing(program)
-    );
-
-    if (!sourceFile) {
-      this.sendEvent("output", "err", "Source file not found");
-      this.sendEvent("end");
-      return;
-    }
-
-    const session = new RunSession(transport);
-    this.runSession = session;
-
-    session.start(Buffer.from(sourceFile).toString("utf8"), {
-      onOutput: (text) => this.sendEvent("output", "out", text),
-      onError: (msg) => this.sendEvent("output", "err", msg),
-      onEnd: () => {
-        if (this.runSession === session) {
-          this.runSession = undefined;
-        }
+      if (!transport) {
+        const msg = "Device transport is missing (not connected?)";
+        logError(`[MaixPyRuntime] ${msg}`);
+        this.sendEvent("output", "err", msg);
         this.sendEvent("end");
-      },
-      onImg: (data) => this.sendEvent("img", data),
-    });
+        return;
+      }
+
+      if (!transport.isConnected) {
+        const msg = `Device transport not connected (ip=${transport.ip})`;
+        logError(`[MaixPyRuntime] ${msg}`);
+        this.sendEvent("output", "err", msg);
+        this.sendEvent("end");
+        return;
+      }
+
+      if (typeof transport.runCode !== "function") {
+        const msg =
+          "Resolved transport has no runCode(); device object was mis-resolved";
+        logError(`[MaixPyRuntime] ${msg}`);
+        this.sendEvent("output", "err", msg);
+        this.sendEvent("end");
+        return;
+      }
+
+      if (isDeviceService(device)) {
+        log(
+          `[MaixPyRuntime] device status=${Status[device.status]} name=${device.device?.name} ip=${device.device?.ip}`
+        );
+        if (device.status === Status.offline) {
+          const msg = "Device status is offline";
+          logError(`[MaixPyRuntime] ${msg}`);
+          this.sendEvent("output", "err", msg);
+          this.sendEvent("end");
+          return;
+        }
+      }
+
+      const sourceFile = await this.loadSource(program);
+      if (!sourceFile || sourceFile.byteLength === 0) {
+        const msg = `Source file not found or empty: ${program}`;
+        logError(`[MaixPyRuntime] ${msg}`);
+        this.sendEvent("output", "err", msg);
+        this.sendEvent("end");
+        return;
+      }
+
+      if (this.runSession) {
+        warn("[MaixPyRuntime] stopping previous RunSession before new start");
+        try {
+          this.runSession.stop();
+        } catch (e) {
+          logError(`[MaixPyRuntime] previous stop failed: ${formatUnknown(e)}`);
+        }
+        this.runSession.dispose();
+        this.runSession = undefined;
+      }
+
+      const code = new TextDecoder("utf-8").decode(sourceFile);
+      log(
+        `[MaixPyRuntime] sending code (${code.length} chars, ${sourceFile.byteLength} bytes) -> ${transport.ip}`
+      );
+      this.sendEvent(
+        "output",
+        "out",
+        `[MaixCode] Running ${program} on ${transport.ip} (${code.length} chars)\n`
+      );
+
+      const session = new RunSession(transport);
+      this.runSession = session;
+
+      session.start(code, {
+        onOutput: (text) => {
+          log(`[MaixPyRuntime] device output: ${String(text).slice(0, 300)}`);
+          this.sendEvent("output", "out", text);
+        },
+        onError: (msg) => {
+          logError(`[MaixPyRuntime] device error: ${msg}`);
+          this.sendEvent("output", "err", msg);
+        },
+        onEnd: () => {
+          log("[MaixPyRuntime] session end");
+          if (this.runSession === session) {
+            this.runSession = undefined;
+          }
+          this.sendEvent("end");
+        },
+        onImg: (data) => {
+          // high frequency — debug level only via log sparingly
+          this.sendEvent("img", data);
+        },
+      });
+
+      log("[MaixPyRuntime] start finished (code dispatched)");
+    } catch (e) {
+      const msg = `MaixPyRuntime.start exception: ${formatUnknown(e)}`;
+      logError(msg);
+      this.sendEvent("output", "err", msg);
+      this.sendEvent("end");
+    }
   }
 
   public stop(): void {
-    this.runSession?.stop();
+    log("[MaixPyRuntime] stop()");
+    try {
+      this.runSession?.stop();
+    } catch (e) {
+      logError(`[MaixPyRuntime] stop failed: ${formatUnknown(e)}`);
+    }
   }
 
   public dispose(): void {
-    this.clearSession();
+    log("[MaixPyRuntime] dispose()");
+    try {
+      if (this.runSession) {
+        this.runSession.stop();
+        this.runSession.dispose();
+        this.runSession = undefined;
+      }
+    } catch (e) {
+      logError(`[MaixPyRuntime] dispose failed: ${formatUnknown(e)}`);
+    }
   }
 
-  private clearSession() {
+  private detachSessionOnly() {
     if (this.runSession) {
-      this.runSession.stop();
-      this.runSession.dispose();
+      log("[MaixPyRuntime] detachSessionOnly()");
+      try {
+        this.runSession.dispose();
+      } catch (e) {
+        logError(`[MaixPyRuntime] detach failed: ${formatUnknown(e)}`);
+      }
       this.runSession = undefined;
     }
   }
@@ -90,23 +191,51 @@ export class MaixPyRuntime extends EventEmitter {
   private resolveTransport(
     device: DeviceService | DeviceTransport
   ): DeviceTransport | undefined {
-    if (device instanceof DeviceService) {
-      return device.transport;
+    try {
+      if (isDeviceService(device)) {
+        const t = device.transport ?? device.wss;
+        log(
+          `[MaixPyRuntime] resolveTransport DeviceService transport=${!!device.transport} wss=${!!device.wss} resolved=${!!t}`
+        );
+        return t;
+      }
+      log("[MaixPyRuntime] resolveTransport bare DeviceTransport");
+      return device;
+    } catch (e) {
+      logError(`[MaixPyRuntime] resolveTransport failed: ${formatUnknown(e)}`);
+      return undefined;
     }
-    return device;
   }
 
   private sendEvent(event: string, ...args: any[]): void {
     setTimeout(() => {
-      this.emit(event, ...args);
+      try {
+        this.emit(event, ...args);
+      } catch (e) {
+        logError(`[MaixPyRuntime] emit(${event}) failed: ${formatUnknown(e)}`);
+      }
     }, 0);
   }
 
   private async loadSource(file: string): Promise<Uint8Array | undefined> {
-    this._sourceFile = this.normalizePathAndCasing(file);
+    const normalized = this.normalizePathAndCasing(file);
+    this._sourceFile = normalized;
+    log(`[MaixPyRuntime] loadSource file=${file} normalized=${normalized}`);
     try {
       return await this.fileAccessor.readFile(file);
-    } catch {
+    } catch (e1) {
+      logError(`[MaixPyRuntime] readFile(${file}) failed: ${formatUnknown(e1)}`);
+      if (normalized !== file) {
+        try {
+          log(`[MaixPyRuntime] retry readFile(${normalized})`);
+          return await this.fileAccessor.readFile(normalized);
+        } catch (e2) {
+          logError(
+            `[MaixPyRuntime] readFile(${normalized}) failed: ${formatUnknown(e2)}`
+          );
+          return undefined;
+        }
+      }
       return undefined;
     }
   }
@@ -114,8 +243,7 @@ export class MaixPyRuntime extends EventEmitter {
   private normalizePathAndCasing(path: string) {
     if (this.fileAccessor.isWindows) {
       return path.replace(/\//g, "\\").toLowerCase();
-    } else {
-      return path.replace(/\\/g, "/");
     }
+    return path.replace(/\\/g, "/");
   }
 }

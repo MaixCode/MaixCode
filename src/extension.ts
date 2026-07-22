@@ -6,27 +6,43 @@ import { Instance } from "./instance";
 import { DebugTypeName } from "./constants";
 
 export function activate(context: vscode.ExtensionContext) {
-  // Initialize logger
-  initLogger(context);
-  log("MaixCode is now active!");
+  try {
+    initLogger(context);
+    log("MaixCode is now active!");
+    log(`Registering debug type: ${DebugTypeName}`);
 
-  // Initialize instance
-  Instance.initInstance(context);
+    Instance.initInstance(context);
+    log("Instance initialized");
 
-  Instance.instance.discoveryService.start();
+    Instance.instance.discoveryService.start();
+    log("Discovery service started");
 
-  // Instance.instance.imageViewer.showWindow();
+    const factory = new DebugAdapterFactory();
+    context.subscriptions.push(
+      vscode.debug.registerDebugAdapterDescriptorFactory(DebugTypeName, factory)
+    );
+    log(`DebugAdapterDescriptorFactory registered for type=${DebugTypeName}`);
 
-  // Activate the debug adapter
-  let factory = new DebugAdapterFactory();
-  context.subscriptions.push(
-    vscode.debug.registerDebugAdapterDescriptorFactory(DebugTypeName, factory)
-  );
-  
-  // ExampleFileProvider now creates its own TreeView internally
-  // No need to register it manually anymore
+    // Surface debug session lifecycle in the log
+    context.subscriptions.push(
+      vscode.debug.onDidStartDebugSession((session) => {
+        log(
+          `onDidStartDebugSession type=${session.type} name=${session.name} id=${session.id}`
+        );
+      }),
+      vscode.debug.onDidTerminateDebugSession((session) => {
+        log(
+          `onDidTerminateDebugSession type=${session.type} name=${session.name} id=${session.id}`
+        );
+      })
+    );
 
-  initCommands(context);
+    initCommands(context);
+    log("Commands registered");
+  } catch (e) {
+    error(e instanceof Error ? e : String(e), true);
+    throw e;
+  }
 
   // initCommands(context, [
   //   {

@@ -317,10 +317,31 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
   }
 
   public runCode(code: string) {
-    this.sendMessage(COMMAND.Run, code);
+    info(`WebSocketService.runCode ip=${this.ip} connected=${this.isConnected} codeLength=${code.length}`);
+    if (!this.isConnected) {
+      error(`WebSocketService.runCode: not connected to ${this.ip}`);
+      this.emit("error", { code: -1, msg: `Not connected to ${this.ip}` });
+      return;
+    }
+    try {
+      this.sendMessage(COMMAND.Run, code);
+      info("WebSocketService.runCode: Run command sent");
+    } catch (e) {
+      error(`WebSocketService.runCode failed: ${e}`);
+      this.emit("error", e instanceof Error ? e : { code: -1, msg: String(e) });
+    }
   }
 
   public stopCode() {
-    this.sendMessage(COMMAND.Stop, "");
+    info(`WebSocketService.stopCode ip=${this.ip} connected=${this.isConnected}`);
+    if (!this.isConnected) {
+      warn(`WebSocketService.stopCode: not connected to ${this.ip}`);
+      return;
+    }
+    try {
+      this.sendMessage(COMMAND.Stop, "");
+    } catch (e) {
+      error(`WebSocketService.stopCode failed: ${e}`);
+    }
   }
 }

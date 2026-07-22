@@ -3,14 +3,13 @@ import {
   DebugSession,
   InitializedEvent,
   OutputEvent,
-  ProgressEndEvent,
-  ExitedEvent,
   TerminatedEvent,
 } from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol";
-import { log } from "../logger";
+import { error, formatUnknown, log, showLog } from "../logger";
 import { Instance } from "../instance";
 import { FileAccessor, MaixPyRuntime } from "./runtime";
+import { Status } from "../model/status";
 
 interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   /** An absolute path to the "program" to debug. */
@@ -21,172 +20,185 @@ interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 
 export class MaixPyDebugSession extends DebugSession {
   private _runtime: MaixPyRuntime;
+  private _launched = false;
 
   constructor(fileAccessor: FileAccessor) {
     super();
 
+    log("[MaixPyDebugSession] constructor");
     this._runtime = new MaixPyRuntime(fileAccessor);
-    this._runtime.on("output", (type, text) => {
-      let category: string;
-      switch (type) {
-        case "prio":
-          category = "important";
-          break;
-        case "out":
-          category = "stdout";
-          break;
-        case "err":
-          category = "stderr";
-          break;
-        default:
-          category = "console";
-          break;
-      }
-      const e: DebugProtocol.OutputEvent = new OutputEvent(`${text}`, category);
 
-      if (text === "start" || text === "startCollapsed" || text === "end") {
-        e.body.group = text;
-        e.body.output = `group-${text}\n`;
-      }
+    this._runtime.on("output", (type: string, text: unknown) => {
+      try {
+        const message =
+          typeof text === "string"
+            ? text
+            : text instanceof Error
+              ? text.message
+              : formatUnknown(text);
+        // Always append newline so Debug Console is readable
+        const line = message.endsWith("\n") ? message : `${message}\n`;
 
-      // e.body.data = text;
-      // Add timestamp
-      e.body;
-      this.sendEvent(e);
+        let category: string;
+        switch (type) {
+          case "prio":
+            category = "important";
+            break;
+          case "out":
+            category = "stdout";
+            break;
+          case "err":
+            category = "stderr";
+            break;
+          default:
+            category = "console";
+            break;
+        }
+
+        log(`[MaixPyDebugSession] runtime output type=${type} category=${category}: ${message.slice(0, 200)}`);
+        this.sendEvent(new OutputEvent(line, category));
+      } catch (e) {
+        error(`[MaixPyDebugSession] output handler failed: ${formatUnknown(e)}`);
+      }
     });
+
     this._runtime.on("end", () => {
+      log("[MaixPyDebugSession] runtime end -> TerminatedEvent");
       this.sendEvent(new TerminatedEvent());
     });
   }
 
-  /**
-   * The 'initialize' request is the first request called by the frontend
-   * to interrogate the features the debug adapter provides.
-   */
   protected initializeRequest(
     response: DebugProtocol.InitializeResponse,
     args: DebugProtocol.InitializeRequestArguments
   ): void {
-    if (args.supportsProgressReporting) {
-      // this._reportProgress = true;
-    }
-    if (args.supportsInvalidatedEvent) {
-      // this._useInvalidatedEvent = true;
-    }
+    log(
+      `[MaixPyDebugSession] initializeRequest clientID=${args.clientID} adapterID=${args.adapterID}`
+    );
 
-    // build and return the capabilities of this debug adapter:
     response.body = response.body || {};
-
-    // the adapter implements the configurationDone request.
-    /** 调试适配器支持 `configurationDone` 请求。 */
     response.body.supportsConfigurationDoneRequest = false;
-
-    // make VS Code use 'evaluate' when hovering over source
     response.body.supportsEvaluateForHovers = false;
-
-    // make VS Code show a 'step back' button
     response.body.supportsStepBack = false;
-
-    // make VS Code support data breakpoints
     response.body.supportsDataBreakpoints = false;
-
-    // make VS Code support completion in REPL
     response.body.supportsCompletionsRequest = false;
     response.body.completionTriggerCharacters = [];
-
-    // make VS Code send cancel request
     response.body.supportsCancelRequest = false;
     response.body.supportsTerminateRequest = true;
-
-    // make VS Code send the breakpointLocations request
     response.body.supportsBreakpointLocationsRequest = false;
-
-    // make VS Code provide "Step in Target" functionality
     response.body.supportsStepInTargetsRequest = false;
-
-    // the adapter defines two exceptions filters, one with support for conditions.
     response.body.supportsExceptionFilterOptions = false;
     response.body.exceptionBreakpointFilters = [];
-
-    // make VS Code send exceptionInfo request
     response.body.supportsExceptionInfoRequest = false;
-
-    // make VS Code send setVariable request
     response.body.supportsSetVariable = false;
-
-    // make VS Code send setExpression request
     response.body.supportsSetExpression = false;
-
-    // make VS Code send disassemble request
     response.body.supportsDisassembleRequest = false;
     response.body.supportsSteppingGranularity = false;
     response.body.supportsInstructionBreakpoints = false;
-
-    // make VS Code able to read and write variable memory
-    response.body.supportsReadMemoryRequest = false;
-    response.body.supportsWriteMemoryRequest = false;
-
     response.body.supportSuspendDebuggee = false;
-    response.body.supportTerminateDebuggee = false;
+    response.body.supportTerminateDebuggee = true;
     response.body.supportsFunctionBreakpoints = false;
     response.body.supportsDelayedStackTraceLoading = false;
 
     this.sendResponse(response);
-
-    // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
-    // we request them early by sending an 'initializeRequest' to the frontend.
-    // The frontend will end the configuration sequence by calling 'configurationDone' request.
-    // 由于此调试适配器可以随时接受配置请求，如 'setBreakpoint'，
-    // 我们通过发送 'initializeRequest' 到前端来提前请求它们。
-    // 前端将通过调用 'configurationDone' 请求来结束配置序列。
     this.sendEvent(new InitializedEvent());
+    log("[MaixPyDebugSession] initializeRequest done + InitializedEvent");
   }
 
-  /**
-   * Called at the end of the configuration sequence.
-   * Indicates that all breakpoints etc. have been sent to the DA and that the 'launch' can start.
-   */
   protected configurationDoneRequest(
     response: DebugProtocol.ConfigurationDoneResponse,
     args: DebugProtocol.ConfigurationDoneArguments
   ): void {
+    log("[MaixPyDebugSession] configurationDoneRequest");
     super.configurationDoneRequest(response, args);
   }
-
-  // protected disconnectRequest(
-  //   response: DebugProtocol.DisconnectResponse,
-  //   args: DebugProtocol.DisconnectArguments,
-  //   request?: DebugProtocol.Request
-  // ): void {
-  //   log(
-  //     `disconnectRequest suspend: ${args.suspendDebuggee}, terminate: ${args.terminateDebuggee}`
-  //   );
-  // }
 
   protected launchRequest(
     response: DebugProtocol.LaunchResponse,
     args: ILaunchRequestArguments,
     request?: DebugProtocol.Request
   ): void {
-    // if (args.noDebug) {
-    //   // no debug mode
-    //   args;
-    // }
-    log("launchRequest");
-    const manager = Instance.instance.deviceManager;
-    const preferred = manager.getCurrentDevice();
-    const connected = manager.getConnectedDevice();
-    const device =
-      preferred && preferred.transport?.isConnected
-        ? preferred
-        : connected[0];
-    if (!device) {
-      this.sendErrorResponse(response, 0, "No device connected");
-      return;
-    }
-    void this._runtime.start(args.program, device);
+    showLog();
+    log("[MaixPyDebugSession] ===== launchRequest begin =====");
+    log(`[MaixPyDebugSession] args=${JSON.stringify(args)}`);
+    log(`[MaixPyDebugSession] program=${args?.program} noDebug=${args?.noDebug}`);
 
-    this.sendResponse(response);
+    try {
+      if (!args?.program) {
+        const msg = "launch.json missing required 'program' path";
+        error(msg, true);
+        this.consoleError(msg);
+        this.sendErrorResponse(response, 1, msg);
+        return;
+      }
+
+      if (!Instance.instance) {
+        const msg = "MaixCode Instance is not initialized (extension activate failed?)";
+        error(msg, true);
+        this.consoleError(msg);
+        this.sendErrorResponse(response, 2, msg);
+        return;
+      }
+
+      const manager = Instance.instance.deviceManager;
+      const allDevices = manager.getDeviceList();
+      const connected = manager.getConnectedDevice();
+      const preferred = manager.getCurrentDevice();
+
+      log(
+        `[MaixPyDebugSession] devices: total=${allDevices.length} connected=${connected.length} hasCurrent=${!!preferred}`
+      );
+      for (const d of allDevices) {
+        const name = d.device?.name ?? "?";
+        const ip = d.device?.ip ?? "?";
+        const st = Status[d.status] ?? d.status;
+        const ws = d.wss
+          ? `wss=yes isConnected=${d.wss.isConnected} isRunning=${d.wss.isRunning}`
+          : "wss=no";
+        log(`[MaixPyDebugSession]   device ${name}@${ip} status=${st} ${ws}`);
+      }
+
+      if (connected.length === 0) {
+        const msg =
+          "No device connected. Connect a MaixCAM from the MaixCode sidebar first.";
+        error(msg, true);
+        this.consoleError(msg);
+        this.sendErrorResponse(response, 3, msg);
+        return;
+      }
+
+      const device =
+        preferred && connected.includes(preferred) ? preferred : connected[0];
+      log(
+        `[MaixPyDebugSession] selected device ${device.device?.name}@${device.device?.ip} status=${Status[device.status]} transport=${!!device.transport} wss=${!!device.wss}`
+      );
+
+      this._launched = true;
+      this.sendResponse(response);
+      log("[MaixPyDebugSession] launchResponse sent, starting runtime...");
+      this.consoleLog(`Starting ${args.program} on ${device.device?.ip}...`);
+
+      void this._runtime
+        .start(args.program, device)
+        .then(() => {
+          log("[MaixPyDebugSession] runtime.start() promise resolved");
+        })
+        .catch((e) => {
+          const msg = `runtime.start failed: ${formatUnknown(e)}`;
+          error(msg, true);
+          this.consoleError(msg);
+          this.sendEvent(new TerminatedEvent());
+        });
+    } catch (e) {
+      const msg = `launchRequest exception: ${formatUnknown(e)}`;
+      error(msg, true);
+      this.consoleError(msg);
+      try {
+        this.sendErrorResponse(response, 99, msg);
+      } catch {
+        this.sendEvent(new TerminatedEvent());
+      }
+    }
   }
 
   protected terminateRequest(
@@ -194,9 +206,13 @@ export class MaixPyDebugSession extends DebugSession {
     args: DebugProtocol.TerminateArguments,
     request?: DebugProtocol.Request
   ): void {
-    this._runtime.stop();
-    this._runtime.dispose();
-
+    log(`[MaixPyDebugSession] terminateRequest launched=${this._launched}`);
+    try {
+      this._runtime.stop();
+      this._runtime.dispose();
+    } catch (e) {
+      error(`[MaixPyDebugSession] terminate cleanup: ${formatUnknown(e)}`);
+    }
     this.sendResponse(response);
   }
 
@@ -205,8 +221,15 @@ export class MaixPyDebugSession extends DebugSession {
     args: DebugProtocol.DisconnectArguments,
     request?: DebugProtocol.Request
   ): void {
-    this._runtime.stop();
-    this._runtime.dispose();
+    log(
+      `[MaixPyDebugSession] disconnectRequest terminateDebuggee=${args.terminateDebuggee} suspend=${args.suspendDebuggee}`
+    );
+    try {
+      this._runtime.stop();
+      this._runtime.dispose();
+    } catch (e) {
+      error(`[MaixPyDebugSession] disconnect cleanup: ${formatUnknown(e)}`);
+    }
     this.sendResponse(response);
   }
 
@@ -214,6 +237,15 @@ export class MaixPyDebugSession extends DebugSession {
     response: DebugProtocol.CancelResponse,
     args: DebugProtocol.CancelArguments
   ) {
-    log("cancelRequest");
+    log(`[MaixPyDebugSession] cancelRequest ${JSON.stringify(args)}`);
+    this.sendResponse(response);
+  }
+
+  private consoleLog(message: string) {
+    this.sendEvent(new OutputEvent(`${message}\n`, "console"));
+  }
+
+  private consoleError(message: string) {
+    this.sendEvent(new OutputEvent(`${message}\n`, "stderr"));
   }
 }

@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { MaixPyDebugSession } from "./session";
 import { FileAccessor } from "./runtime";
+import { error, formatUnknown, log, showLog } from "../logger";
+import { DebugTypeName } from "../constants";
 
 function pathToUri(path: string) {
   try {
@@ -9,19 +11,30 @@ function pathToUri(path: string) {
     return vscode.Uri.parse(path);
   }
 }
+
 export const workspaceFileAccessor: FileAccessor = {
   isWindows: typeof process !== "undefined" && process.platform === "win32",
   async readFile(path: string): Promise<Uint8Array> {
+    log(`[FileAccessor] readFile: ${path}`);
     let uri: vscode.Uri;
     try {
       uri = pathToUri(path);
     } catch (e) {
-      return new TextEncoder().encode(`cannot read '${path}'`);
+      error(`[FileAccessor] pathToUri failed: ${formatUnknown(e)}`);
+      throw new Error(`cannot resolve path '${path}': ${formatUnknown(e)}`);
     }
 
-    return await vscode.workspace.fs.readFile(uri);
+    try {
+      const data = await vscode.workspace.fs.readFile(uri);
+      log(`[FileAccessor] readFile ok: ${path} (${data.byteLength} bytes)`);
+      return data;
+    } catch (e) {
+      error(`[FileAccessor] readFile failed: ${path}: ${formatUnknown(e)}`);
+      throw e;
+    }
   },
   async writeFile(path: string, contents: Uint8Array) {
+    log(`[FileAccessor] writeFile: ${path} (${contents.byteLength} bytes)`);
     await vscode.workspace.fs.writeFile(pathToUri(path), contents);
   },
 };
@@ -30,15 +43,42 @@ export class DebugAdapterFactory
   implements vscode.DebugAdapterDescriptorFactory
 {
   createDebugAdapterDescriptor(
-    _session: vscode.DebugSession
+    session: vscode.DebugSession
   ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    if (_session.configuration.request === "launch") {
-      return new vscode.DebugAdapterInlineImplementation(
-        new MaixPyDebugSession(workspaceFileAccessor)
+    try {
+      showLog();
+      log(
+        `[DebugAdapterFactory] create descriptor type=${session.type} name=${session.name} request=${session.configuration?.request}`
       );
-    } else {
-      vscode.window.showErrorMessage("Unknown debug request name");
+      log(
+        `[DebugAdapterFactory] configuration=${JSON.stringify(session.configuration)}`
+      );
+      log(`[DebugAdapterFactory] expected debug type=${DebugTypeName}`);
+
+      if (session.type !== DebugTypeName) {
+        warnTypeMismatch(session.type);
+      }
+
+      if (session.configuration.request === "launch") {
+        log("[DebugAdapterFactory] using inline MaixPyDebugSession");
+        return new vscode.DebugAdapterInlineImplementation(
+          new MaixPyDebugSession(workspaceFileAccessor)
+        );
+      }
+
+      const msg = `Unknown debug request: ${session.configuration.request}`;
+      error(msg, true);
+      vscode.window.showErrorMessage(msg);
+      return undefined;
+    } catch (e) {
+      error(`[DebugAdapterFactory] failed: ${formatUnknown(e)}`, true);
       return undefined;
     }
   }
+}
+
+function warnTypeMismatch(type: string) {
+  log(
+    `[DebugAdapterFactory] WARNING session.type=${type} differs from ${DebugTypeName}`
+  );
 }

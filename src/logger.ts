@@ -1,56 +1,102 @@
 import * as vscode from "vscode";
 import dayjs from "dayjs";
 
-let outputChannel: vscode.LogOutputChannel;
+let outputChannel: vscode.LogOutputChannel | undefined;
+
+function stamp(level: string, message: string) {
+  return `[${dayjs().format("YYYY-MM-DD HH:mm:ss")}][${level}] ${message}`;
+}
 
 export function initLogger(context: vscode.ExtensionContext) {
-  outputChannel = vscode.window.createOutputChannel("MaixCode", {log: true});
+  outputChannel = vscode.window.createOutputChannel("MaixCode", { log: true });
+  context.subscriptions.push(outputChannel);
+  // Ensure early activation is visible even if user never opens the panel
+  console.log(stamp("Info", "Logger initialized"));
+}
+
+export function showLog() {
+  try {
+    outputChannel?.show(true);
+  } catch {
+    // ignore
+  }
 }
 
 export function debug(message: string) {
-  outputChannel.debug(message);
-  // console.debug(`[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Debug] ${message}`);
+  const line = stamp("Debug", message);
+  console.log(line);
+  try {
+    outputChannel?.debug(message);
+  } catch {
+    // ignore
+  }
 }
 
 export function log(message: string) {
-  outputChannel.info(message);
+  const line = stamp("Info", message);
+  console.log(line);
+  try {
+    outputChannel?.info(message);
+  } catch {
+    // ignore
+  }
 }
 
 export function info(message: string) {
-  outputChannel.info(message);
+  log(message);
 }
 
 export function warn(message: string) {
-  outputChannel.warn(message);
-  console.warn(`[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Warn] ${message}`);
+  const line = stamp("Warn", message);
+  console.warn(line);
+  try {
+    outputChannel?.warn(message);
+  } catch {
+    // ignore
+  }
 }
 
-export function error(message: string | Error) {
-  // if (typeof message === "string") {
-  //   outputChannel.appendLine(
-  //     `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] ${message}`
-  //   );
-  // } else {
-  //   outputChannel.appendLine(
-  //     `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] Catch an error: ${
-  //       message.message
-  //     }, \nstack: ${message.stack}`
-  //   );
-  // }
-  if (typeof message === "string") {
-    outputChannel.error(message);
-    console.error(`[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] ${message}`);
-  } else {
-    outputChannel.error(`Catch an error: ${message.message}, \nstack: ${message.stack}`);
-    console.error(
-      `[${dayjs().format("YYYY-MM-DD hh:mm:ss")}][Error] Catch an error: ${message.message}, \nstack: ${message.stack}`
-    );
+/**
+ * Log an error without always popping a modal (use notify=true for user-facing failures).
+ */
+export function error(message: string | Error, notify = false) {
+  const text =
+    typeof message === "string"
+      ? message
+      : `Catch an error: ${message.message}\nstack: ${message.stack}`;
+  const line = stamp("Error", text);
+  console.error(line);
+  try {
+    if (typeof message === "string") {
+      outputChannel?.error(message);
+    } else {
+      outputChannel?.error(text);
+    }
+  } catch {
+    // ignore
   }
-  vscode.window
-    .showErrorMessage("An error occurred, please check the log.", "Show Log")
-    .then((selection) => {
-      if (selection === "Show Log") {
-        outputChannel.show();
-      }
-    });
+
+  if (notify) {
+    vscode.window
+      .showErrorMessage(`MaixCode: ${typeof message === "string" ? message : message.message}`, "Show Log")
+      .then((selection) => {
+        if (selection === "Show Log") {
+          showLog();
+        }
+      });
+  }
+}
+
+export function formatUnknown(err: unknown): string {
+  if (err instanceof Error) {
+    return `${err.message}${err.stack ? `\n${err.stack}` : ""}`;
+  }
+  if (typeof err === "string") {
+    return err;
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
