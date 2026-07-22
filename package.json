@@ -231,7 +231,7 @@
               },
               "path": {
                 "type": "string",
-                "description": "local_folder: absolute path or ${workspaceFolder}/..."
+                "description": "local_folder: absolute path, ~/..., or ${workspaceFolder}/..."
               },
               "owner": {
                 "type": "string",
