@@ -59,14 +59,16 @@ export class DebugAdapterFactory
         warnTypeMismatch(session.type);
       }
 
-      if (session.configuration.request === "launch") {
+      // Inline adapter only — never shell out to program/runtime from package.json
+      const request = session.configuration?.request ?? "launch";
+      if (request === "launch") {
         log("[DebugAdapterFactory] using inline MaixPyDebugSession");
         return new vscode.DebugAdapterInlineImplementation(
           new MaixPyDebugSession(workspaceFileAccessor)
         );
       }
 
-      const msg = `Unknown debug request: ${session.configuration.request}`;
+      const msg = `Unsupported debug request: ${request} (only launch is supported)`;
       error(msg, true);
       vscode.window.showErrorMessage(msg);
       return undefined;

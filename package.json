@@ -82,6 +82,12 @@
         "command": "maixcode.openImageViewer",
         "title": "Open Image Viewer",
         "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.runOnDevice",
+        "title": "Run Current File on Device",
+        "icon": "$(play)",
+        "category": "MaixCode"
       }
     ],
     "menus": {
@@ -103,14 +109,26 @@
           "when": "viewItem == maixcode-deviceIp",
           "group": "inline"
         }
+      ],
+      "editor/title": [
+        {
+          "command": "maixcode.runOnDevice",
+          "when": "resourceLangId == python",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "maixcode.runOnDevice",
+          "when": "resourceLangId == python",
+          "group": "navigation@1"
+        }
       ]
     },
     "debuggers": [
       {
         "type": "maixpy",
         "label": "MaixPy Debug",
-        "program": "./out/debugger.js",
-        "runtime": "python",
         "languages": [
           "python"
         ],
@@ -122,12 +140,37 @@
             "properties": {
               "program": {
                 "type": "string",
-                "description": "The program to debug",
-                "default": "${workspaceFolder}/main.py"
+                "description": "Absolute path to the MaixPy/Python file to run on the device",
+                "default": "${file}"
+              },
+              "noDebug": {
+                "type": "boolean",
+                "description": "Run without debug UI extras",
+                "default": true
               }
             }
           }
-        }
+        },
+        "initialConfigurations": [
+          {
+            "type": "maixpy",
+            "request": "launch",
+            "name": "MaixPy: Run Current File on Device",
+            "program": "${file}"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "MaixPy: Run Current File on Device",
+            "description": "Send the current Python file to a connected MaixCAM",
+            "body": {
+              "type": "maixpy",
+              "request": "launch",
+              "name": "MaixPy: Run Current File on Device",
+              "program": "${file}"
+            }
+          }
+        ]
       }
     ],
     "configuration": {

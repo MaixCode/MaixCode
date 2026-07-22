@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { ImageViewer } from "./ui/provider/image_viewer";
 import { Instance } from "./instance";
-import { Commands } from "./constants";
+import { Commands, DebugTypeName } from "./constants";
+import { error, formatUnknown, log, showLog } from "./logger";
 
 export function initCommands(context: vscode.ExtensionContext) {
   const commandList = [
@@ -50,6 +51,45 @@ export function initCommands(context: vscode.ExtensionContext) {
       name: Commands.openImageViewer,
       func: () => {
         Instance.instance.imageViewer.showWindow();
+      },
+    },
+    {
+      name: Commands.runOnDevice,
+      func: async () => {
+        showLog();
+        log("[Command] runOnDevice");
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+          vscode.window.showErrorMessage("No active editor");
+          log("[Command] runOnDevice: no active editor");
+          return;
+        }
+        const program = editor.document.uri.fsPath;
+        if (editor.document.isDirty) {
+          await editor.document.save();
+        }
+        const connected = Instance.instance.deviceManager.getConnectedDevice();
+        log(`[Command] runOnDevice program=${program} connected=${connected.length}`);
+        if (connected.length === 0) {
+          vscode.window.showErrorMessage(
+            "No device connected. Connect a MaixCAM from the MaixCode sidebar first."
+          );
+          return;
+        }
+        try {
+          const started = await vscode.debug.startDebugging(undefined, {
+            type: DebugTypeName,
+            request: "launch",
+            name: "MaixPy: Run Current File on Device",
+            program,
+          });
+          log(`[Command] runOnDevice startDebugging returned ${started}`);
+          if (!started) {
+            error("vscode.debug.startDebugging returned false", true);
+          }
+        } catch (e) {
+          error(`[Command] runOnDevice failed: ${formatUnknown(e)}`, true);
+        }
       },
     },
     // {

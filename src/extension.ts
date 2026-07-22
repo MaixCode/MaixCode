@@ -23,6 +23,39 @@ export function activate(context: vscode.ExtensionContext) {
     );
     log(`DebugAdapterDescriptorFactory registered for type=${DebugTypeName}`);
 
+    // Provide defaults when user picks MaixPy without a full launch.json entry
+    context.subscriptions.push(
+      vscode.debug.registerDebugConfigurationProvider(DebugTypeName, {
+        resolveDebugConfiguration(folder, config) {
+          log(
+            `[DebugConfigurationProvider] resolve ${JSON.stringify(config)} folder=${folder?.uri?.fsPath}`
+          );
+          // Empty config (from "Add Configuration" / missing fields)
+          if (!config.type) {
+            config.type = DebugTypeName;
+          }
+          if (!config.request) {
+            config.request = "launch";
+          }
+          if (!config.name) {
+            config.name = "MaixPy: Run Current File on Device";
+          }
+          if (!config.program) {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+              config.program = editor.document.uri.fsPath;
+              log(`[DebugConfigurationProvider] program from active editor: ${config.program}`);
+            } else {
+              log("[DebugConfigurationProvider] no program and no active editor");
+              return undefined; // abort
+            }
+          }
+          return config;
+        },
+      })
+    );
+    log("DebugConfigurationProvider registered");
+
     // Surface debug session lifecycle in the log
     context.subscriptions.push(
       vscode.debug.onDidStartDebugSession((session) => {
