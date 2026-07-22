@@ -1,14 +1,31 @@
+# Dev / tooling
 .vscode/**
 .vscode-test/**
-out/**
-node_modules/**
-src/**
+.github/**
+**/.vscode-test.*
 .gitignore
+.gitattributes
 .yarnrc
+.npmrc
+pnpm-lock.yaml
+pnpm-workspace.yaml
 webpack.config.js
-vsc-extension-quickstart.md
 **/tsconfig.json
 **/.eslintrc.json
-**/*.map
+.eslintrc*
+eslint.config.*
+vsc-extension-quickstart.md
+AGENTS.md
+*.vsix
+
+# Sources & tests (bundled into dist/)
+src/**
+out/**
+node_modules/**
 **/*.ts
-**/.vscode-test.*
+**/*.map
+**/*.test.js
+
+# Optional docs not needed at runtime
+CHANGELOG.md
+changelog.md
