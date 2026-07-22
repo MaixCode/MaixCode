@@ -5,19 +5,8 @@ import JSZip from "jszip";
 import * as fs from "fs";
 import * as path from "path";
 import { Commands } from "../../constants";
-import { info } from "../../logger";
-
-class ExampleDocumentContentProvider implements vscode.TextDocumentContentProvider {
-  private documents = new Map<string, string>();
-
-  provideTextDocumentContent(uri: vscode.Uri): string {
-    return this.documents.get(uri.toString()) || '';
-  }
-
-  setContent(uri: vscode.Uri, content: string): void {
-    this.documents.set(uri.toString(), content);
-  }
-}
+import { info, log } from "../../logger";
+import { ExampleFileSystemProvider } from "./example_fs";
 
 export class ExampleFileProvider
   implements vscode.TreeDataProvider<vscode.TreeItem>
@@ -32,7 +21,7 @@ export class ExampleFileProvider
   private sipeedCdnBaseUrl = "https://cdn.sipeed.com/maixvision/examples";
   private cacheDir: string;
   private cacheFile: string;
-  private documentProvider = new ExampleDocumentContentProvider();
+  private readonly virtualFs = new ExampleFileSystemProvider();
   private treeView: vscode.TreeView<vscode.TreeItem>;
 
   constructor(private context: vscode.ExtensionContext) {
@@ -43,9 +32,16 @@ export class ExampleFileProvider
       fs.mkdirSync(this.cacheDir, { recursive: true });
     }
 
-    // 注册虚拟文档内容提供器
+    // Writable virtual FS for examples (edit freely; Save -> Save As)
     context.subscriptions.push(
-      vscode.workspace.registerTextDocumentContentProvider('example', this.documentProvider)
+      vscode.workspace.registerFileSystemProvider(
+        ExampleFileSystemProvider.scheme,
+        this.virtualFs,
+        {
+          isCaseSensitive: true,
+          isReadonly: false,
+        }
+      )
     );
 
     // 创建 TreeView
@@ -241,16 +237,30 @@ export class ExampleFileProvider
     return {};
   }
 
-  static async guessLanguageType(uri: vscode.Uri): Promise<string | undefined> {
+  static async guessLanguageFromPath(
+    filePath: string
+  ): Promise<string | undefined> {
+    const ext = path.extname(filePath).toLowerCase();
+    const byExt: Record<string, string> = {
+      ".py": "python",
+      ".md": "markdown",
+      ".json": "json",
+      ".yml": "yaml",
+      ".yaml": "yaml",
+      ".txt": "plaintext",
+      ".c": "c",
+      ".cpp": "cpp",
+      ".h": "c",
+      ".js": "javascript",
+      ".ts": "typescript",
+    };
+    if (byExt[ext]) {
+      return byExt[ext];
+    }
     try {
-      const document = await vscode.workspace.openTextDocument(uri);
-      const languages = await vscode.languages.getLanguages();
-      for (const language of languages) {
-        const filter: vscode.DocumentFilter = { language };
-        if (vscode.languages.match(filter, document)) {
-          return language;
-        }
-      }
+      const fileUri = vscode.Uri.file(filePath);
+      const document = await vscode.workspace.openTextDocument(fileUri);
+      return document.languageId;
     } catch (error) {
       console.error("Error guessing language type:", error);
     }
@@ -263,39 +273,47 @@ export class ExampleFileProvider
   ): Promise<void> {
     if (source) {
       await vscode.window.showWarningMessage(
-        "You are opening the source file. Your modifications MAY BE LOST!"
+        "You are opening the cached source file. Refreshing examples may overwrite your changes."
       );
-      await vscode.window.showTextDocument(uri);
-    } else {
-      // 读取文件内容
-      const fileContent = fs.readFileSync(uri.fsPath, "utf-8");
+      await vscode.window.showTextDocument(uri, { preview: false });
+      return;
+    }
 
-      // 猜测文件语言类型
-      let language = await ExampleFileProvider.guessLanguageType(uri);
-      if (!language) {
-        language = "plaintext";
+    try {
+      const fileContent = await fs.promises.readFile(uri.fsPath, "utf-8");
+      let language =
+        (await ExampleFileProvider.guessLanguageFromPath(uri.fsPath)) ||
+        "plaintext";
+
+      const virtualUri = this.virtualFs.seedFile(path.basename(uri.fsPath), fileContent, {
+        originFsPath: uri.fsPath,
+        languageId: language,
+      });
+
+      let document = await vscode.workspace.openTextDocument(virtualUri);
+      if (language && document.languageId !== language) {
+        document = await vscode.languages.setTextDocumentLanguage(
+          document,
+          language
+        );
       }
 
-      // 创建虚拟文档 URI
-      const virtualUri = vscode.Uri.parse(`example:${path.basename(uri.fsPath)}?${encodeURIComponent(uri.fsPath)}`);
-      
-      // 设置虚拟文档内容
-      this.documentProvider.setContent(virtualUri, fileContent);
-
-      // 打开虚拟文档
-      const document = await vscode.workspace.openTextDocument(virtualUri);
-      
-      // 设置语言模式
-      // await vscode.languages.setTextDocumentLanguage(document, language);
-
-      // 以预览模式打开文档
-      const options: vscode.TextDocumentShowOptions = {
-        preview: true,
-        preserveFocus: true,
-      };
-
-      await vscode.window.showTextDocument(document, options);
+      // Non-preview so the tab stays open for free editing
+      await vscode.window.showTextDocument(document, {
+        preview: false,
+        preserveFocus: false,
+      });
+      log(
+        `[ExampleFileProvider] opened virtual editor ${virtualUri.toString()} lang=${language}`
+      );
+    } catch (e) {
+      vscode.window.showErrorMessage(`Failed to open example: ${e}`);
     }
+  }
+
+  /** Public for run-on-device / other callers */
+  public getVirtualFs(): ExampleFileSystemProvider {
+    return this.virtualFs;
   }
 
   private createTreeItems(
