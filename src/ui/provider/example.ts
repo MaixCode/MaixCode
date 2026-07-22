@@ -287,9 +287,14 @@ export class ExampleFileProvider
     source: boolean = false
   ): Promise<void> {
     if (source) {
-      await vscode.window.showWarningMessage(
-        "You are opening the cached source file. Refreshing examples may overwrite your changes."
+      const choice = await vscode.window.showWarningMessage(
+        "Opening the on-disk/cached example source. Changes can be overwritten when you refresh this example source. Prefer the normal open (virtual copy) for editing, or use Save As.",
+        { modal: true },
+        "Open Anyway"
       );
+      if (choice !== "Open Anyway") {
+        return;
+      }
       await vscode.window.showTextDocument(uri, { preview: false });
       return;
     }

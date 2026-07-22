@@ -85,6 +85,11 @@
         "category": "MaixCode"
       },
       {
+        "command": "maixcode.openExampleSource",
+        "title": "Open Source File (may be overwritten)",
+        "category": "MaixCode"
+      },
+      {
         "command": "maixcode.openImageViewer",
         "title": "Open Image Viewer",
         "category": "MaixCode"
@@ -119,6 +124,11 @@
           "command": "maixcode.refreshExampleSource",
           "when": "view == maixcode-example && viewItem == exampleSource",
           "group": "inline"
+        },
+        {
+          "command": "maixcode.openExampleSource",
+          "when": "view == maixcode-example && viewItem == file",
+          "group": "1_open@1"
         }
       ],
       "editor/title": [
@@ -191,6 +201,16 @@
           "type": "boolean",
           "default": true,
           "description": "Enable device discovery"
+        },
+        "maixcode.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically connect when a MaixCAM is discovered and no device is connected"
+        },
+        "maixcode.autoConnectTarget": {
+          "type": "string",
+          "default": "",
+          "description": "Preferred device for auto-connect: device hostname (e.g. maixcam-xxxx.local) or IP. Empty = last connected device, then first discovered."
         },
         "maixcode.exampleSources": {
           "type": "array",
