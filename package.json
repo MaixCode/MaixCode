@@ -180,6 +180,75 @@
           "type": "boolean",
           "default": true,
           "description": "Enable device discovery"
+        },
+        "maixcode.exampleSources": {
+          "type": "array",
+          "default": [
+            {
+              "id": "sipeed",
+              "type": "sipeed",
+              "label": "Official"
+            }
+          ],
+          "description": "Example sources shown as first-level folders in the Example view. Types: sipeed | localfile | github_repo.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique id; used as cache folder name under sources/<id>/"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "sipeed",
+                  "localfile",
+                  "github_repo"
+                ]
+              },
+              "label": {
+                "type": "string",
+                "description": "Display name in the Example tree"
+              },
+              "baseUrl": {
+                "type": "string",
+                "description": "sipeed CDN base URL"
+              },
+              "path": {
+                "type": "string",
+                "description": "localfile: absolute path or ${workspaceFolder}/..."
+              },
+              "owner": {
+                "type": "string",
+                "description": "github_repo: owner"
+              },
+              "repo": {
+                "type": "string",
+                "description": "github_repo: repository name"
+              },
+              "ref": {
+                "type": "string",
+                "description": "github_repo: branch, tag, or commit (default main)"
+              },
+              "subdir": {
+                "type": "string",
+                "description": "github_repo: optional subdirectory inside the repo"
+              },
+              "token": {
+                "type": "string",
+                "description": "github_repo: optional token (prefer maixcode.githubToken)"
+              }
+            }
+          }
+        },
+        "maixcode.githubToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional GitHub token for private example repos (maixcode.exampleSources type github_repo)."
         }
       }
     }

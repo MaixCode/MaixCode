@@ -1,38 +1,54 @@
 import * as vscode from "vscode";
-import axios from "axios";
-import * as yaml from "yamljs";
-import JSZip from "jszip";
 import * as fs from "fs";
 import * as path from "path";
-import { Commands } from "../../constants";
-import { info, log } from "../../logger";
+import { info, log, warn } from "../../logger";
 import { ExampleFileSystemProvider } from "./example_fs";
+import { ExampleSource } from "../../service/example_source/types";
+import { createExampleSources } from "../../service/example_source/registry";
+import { buildFileTree, ensureDir } from "../../service/example_source/fs_util";
+
+/** Tree node: source root or nested folder/file under a source */
+class ExampleTreeItem extends vscode.TreeItem {
+  constructor(
+    label: string,
+    collapsible: vscode.TreeItemCollapsibleState,
+    public readonly sourceId: string | undefined,
+    public readonly fsPath: string | undefined,
+    contextValue: string
+  ) {
+    super(label, collapsible);
+    this.contextValue = contextValue;
+    if (fsPath) {
+      this.resourceUri = vscode.Uri.file(fsPath);
+    }
+  }
+}
 
 export class ExampleFileProvider
-  implements vscode.TreeDataProvider<vscode.TreeItem>
+  implements vscode.TreeDataProvider<ExampleTreeItem>
 {
   private _onDidChangeTreeData: vscode.EventEmitter<
-    vscode.TreeItem | undefined | void
-  > = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
+    ExampleTreeItem | undefined | void
+  > = new vscode.EventEmitter<ExampleTreeItem | undefined | void>();
   readonly onDidChangeTreeData: vscode.Event<
-    vscode.TreeItem | undefined | void
+    ExampleTreeItem | undefined | void
   > = this._onDidChangeTreeData.event;
 
-  private sipeedCdnBaseUrl = "https://cdn.sipeed.com/maixvision/examples";
   private cacheDir: string;
-  private cacheFile: string;
+  private sourcesRoot: string;
+  private sources: ExampleSource[] = [];
   private readonly virtualFs = new ExampleFileSystemProvider();
-  private treeView: vscode.TreeView<vscode.TreeItem>;
+  private treeView: vscode.TreeView<ExampleTreeItem>;
+  private refreshing = false;
 
   constructor(private context: vscode.ExtensionContext) {
-    // this.cacheDir = path.join(context.globalStoragePath, "cache");
     this.cacheDir = path.join(context.globalStorageUri.fsPath, "cache");
-    this.cacheFile = path.join(this.cacheDir, "fileTree.json");
-    if (!fs.existsSync(this.cacheDir)) {
-      fs.mkdirSync(this.cacheDir, { recursive: true });
-    }
+    this.sourcesRoot = path.join(this.cacheDir, "sources");
+    ensureDir(this.cacheDir);
+    ensureDir(this.sourcesRoot);
 
-    // Writable virtual FS for examples (edit freely; Save -> Save As)
+    this.reloadSources();
+
     context.subscriptions.push(
       vscode.workspace.registerFileSystemProvider(
         ExampleFileSystemProvider.scheme,
@@ -44,67 +60,97 @@ export class ExampleFileProvider
       )
     );
 
-    // 创建 TreeView
-    this.treeView = vscode.window.createTreeView('maixcode-example', {
+    this.treeView = vscode.window.createTreeView("maixcode-example", {
       treeDataProvider: this,
       showCollapseAll: true,
       canSelectMany: false,
-      dragAndDropController: undefined // 可以在未来添加拖拽支持
     });
-
-    // 注册 TreeView 到 context 的 subscriptions
     context.subscriptions.push(this.treeView);
-
-    // 注册 TreeView 事件处理器
     this.setupTreeViewEvents();
+
+    // Reload source list when settings change
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (
+          e.affectsConfiguration("maixcode.exampleSources") ||
+          e.affectsConfiguration("maixcode.githubToken")
+        ) {
+          log("[ExampleFileProvider] example source settings changed");
+          this.reloadSources();
+          this._onDidChangeTreeData.fire();
+        }
+      })
+    );
+  }
+
+  private reloadSources(): void {
+    this.sources = createExampleSources(this.cacheDir);
   }
 
   public async refresh(): Promise<void> {
-    /* Clear cache */
-    info("[ExampleFileProvider] Refreshing example files...");
-    await this.downloadAndExtract();
+    if (this.refreshing) {
+      info("[ExampleFileProvider] refresh already in progress");
+      return;
+    }
+    this.refreshing = true;
+    this.reloadSources();
+    info(
+      `[ExampleFileProvider] Refreshing ${this.sources.length} example source(s)...`
+    );
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "MaixCode Examples",
+        cancellable: false,
+      },
+      async (progress) => {
+        for (const source of this.sources) {
+          try {
+            progress.report({ message: `Refreshing ${source.label}...` });
+            await source.refresh((msg) => progress.report({ message: msg }));
+            info(`[ExampleFileProvider] ${source.id} OK`);
+          } catch (e) {
+            warn(`[ExampleFileProvider] ${source.id} failed: ${e}`);
+            vscode.window.showErrorMessage(
+              `Example source "${source.label}" (${source.id}) failed: ${e}`
+            );
+          }
+        }
+      }
+    );
+
+    this.refreshing = false;
     this._onDidChangeTreeData.fire();
   }
 
   private setupTreeViewEvents(): void {
-    // 处理 TreeView 选择变化事件
     this.treeView.onDidChangeSelection(async (e) => {
       if (e.selection.length > 0) {
         const selectedItem = e.selection[0];
-        if (selectedItem.contextValue === 'file' && selectedItem.resourceUri) {
+        if (
+          selectedItem.contextValue === "file" &&
+          selectedItem.resourceUri
+        ) {
           await this.openFile(selectedItem.resourceUri);
         }
       }
     });
-    // 处理 TreeView 可见性变化事件
-    // this.treeView.onDidChangeVisibility((e) => {
-    //   if (e.visible) {
-    //     info("[ExampleFileProvider] TreeView became visible");
-    //     // 可以在这里触发数据刷新或其他操作
-    //   }
-    // });
-
-    // 处理 TreeView 聚焦变化事件
-    // this.treeView.onDidChangeCheckboxState && this.treeView.onDidChangeCheckboxState((e) => {
-    //   // 如果需要复选框功能，可以在这里处理
-    //   info("[ExampleFileProvider] Checkbox state changed");
-    // });
   }
 
-  // 添加方便的方法来控制 TreeView
-  public async reveal(element: vscode.TreeItem): Promise<void> {
+  public async reveal(element: ExampleTreeItem): Promise<void> {
     try {
-      await this.treeView.reveal(element, { 
-        select: true, 
+      await this.treeView.reveal(element, {
+        select: true,
         focus: true,
-        expand: true
+        expand: true,
       });
     } catch (error) {
-      console.error('Error revealing tree item:', error);
+      console.error("Error revealing tree item:", error);
     }
   }
 
-  public get selection(): readonly vscode.TreeItem[] {
+  public get selection(): readonly ExampleTreeItem[] {
     return this.treeView.selection;
   }
 
@@ -112,7 +158,6 @@ export class ExampleFileProvider
     return this.treeView.visible;
   }
 
-  // 设置 TreeView 的标题和描述
   public updateTreeViewDisplay(title?: string, description?: string): void {
     if (title) {
       this.treeView.title = title;
@@ -122,119 +167,52 @@ export class ExampleFileProvider
     }
   }
 
-  // 展开或折叠所有节点
-  public async expandAll(): Promise<void> {
-    // 这需要遍历所有节点并展开它们
-    // 实际实现会依赖于具体的文件结构
-    this._onDidChangeTreeData.fire();
-  }
-
-  // 获取 TreeView 实例
-  public getTreeView(): vscode.TreeView<vscode.TreeItem> {
+  public getTreeView(): vscode.TreeView<ExampleTreeItem> {
     return this.treeView;
   }
 
-  getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
+  getTreeItem(element: ExampleTreeItem): vscode.TreeItem {
     return element;
   }
 
-  async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+  async getChildren(element?: ExampleTreeItem): Promise<ExampleTreeItem[]> {
+    // Root: one folder per source (first-level directory = source id / label)
     if (!element) {
-      const fileTree = await this.getFileTree();
-      return this.createTreeItems(fileTree, `${this.cacheDir}/extracted`);
-    } else {
-      const filePath = element.resourceUri?.fsPath;
-      if (
-        filePath &&
-        fs.existsSync(filePath) &&
-        fs.statSync(filePath).isDirectory()
-      ) {
-        const fileTree = this.buildFileTree(filePath);
-        return this.createTreeItems(fileTree, filePath);
-      }
-      return [];
-    }
-  }
-
-  private async downloadAndExtract(): Promise<void> {
-    try {
-      const response = await axios.get(
-        `${(this, this.sipeedCdnBaseUrl)}/latest.yml`
-      );
-      const yamlContent = response.data;
-      const parsedYaml = yaml.parse(yamlContent);
-      const zipUrl = `${this.sipeedCdnBaseUrl}/${parsedYaml.version}.zip`;
-
-      const zipResponse = await axios.get(zipUrl, {
-        responseType: "arraybuffer",
+      return this.sources.map((s) => {
+        const item = new ExampleTreeItem(
+          s.label,
+          vscode.TreeItemCollapsibleState.Collapsed,
+          s.id,
+          s.rootDir,
+          "exampleSource"
+        );
+        item.description = s.id;
+        item.tooltip = `${s.label} (${s.type}: ${s.id})\n${s.rootDir}`;
+        item.iconPath = new vscode.ThemeIcon(
+          s.type === "github_repo"
+            ? "github"
+            : s.type === "localfile"
+              ? "folder-library"
+              : "cloud-download"
+        );
+        return item;
       });
-      const zip = new JSZip();
-      const zipContent = await zip.loadAsync(zipResponse.data);
+    }
 
-      const extractPath = path.join(this.cacheDir, "extracted");
-      if (!fs.existsSync(extractPath)) {
-        fs.mkdirSync(extractPath, { recursive: true });
-      }
-
-      await this.extractZip(zipContent, extractPath);
-      await this.saveFileTree(extractPath);
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `Error downloading or extracting files: ${error}`
+    // Nested: list directory under source
+    const filePath = element.fsPath;
+    if (
+      filePath &&
+      fs.existsSync(filePath) &&
+      fs.statSync(filePath).isDirectory()
+    ) {
+      return this.createTreeItems(
+        buildFileTree(filePath),
+        filePath,
+        element.sourceId
       );
     }
-  }
-
-  private async extractZip(
-    zipContent: JSZip,
-    extractPath: string
-  ): Promise<void> {
-    const files = Object.keys(zipContent.files);
-    await Promise.all(
-      files.map(async (fileName) => {
-        const file = zipContent.files[fileName];
-        const filePath = path.join(extractPath, fileName);
-        if (file.dir) {
-          if (!fs.existsSync(filePath)) {
-            await fs.promises.mkdir(filePath, { recursive: true });
-          }
-        } else {
-          const content = await file.async("nodebuffer");
-          await fs.promises.writeFile(filePath, content);
-        }
-      })
-    );
-  }
-
-  private async saveFileTree(extractPath: string): Promise<void> {
-    const fileTree = this.buildFileTree(extractPath);
-    fs.writeFileSync(this.cacheFile, JSON.stringify(fileTree, null, 2));
-  }
-
-  private buildFileTree(dir: string): any {
-    const result: any = {};
-    const files = fs.readdirSync(dir);
-    for (const file of files) {
-      const filePath = path.join(dir, file);
-      const stat = fs.statSync(filePath);
-      if (stat.isDirectory()) {
-        result[file] = this.buildFileTree(filePath);
-      } else {
-        result[file] = null;
-      }
-    }
-    return result;
-  }
-
-  private async getFileTree(): Promise<any> {
-    if (fs.existsSync(this.cacheFile)) {
-      const fileTreeContent = await fs.promises.readFile(
-        this.cacheFile,
-        "utf-8"
-      );
-      return JSON.parse(fileTreeContent);
-    }
-    return {};
+    return [];
   }
 
   static async guessLanguageFromPath(
@@ -285,11 +263,13 @@ export class ExampleFileProvider
         (await ExampleFileProvider.guessLanguageFromPath(uri.fsPath)) ||
         "plaintext";
 
-      const extractRoot = path.join(this.cacheDir, "extracted");
-      let rel = path.relative(extractRoot, uri.fsPath);
+      // Relative path under sources/ so virtual URI includes source id as first segment
+      let rel = path.relative(this.sourcesRoot, uri.fsPath);
       if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
-        // Fallback: keep folder name + file when outside extract root
-        rel = path.join(path.basename(path.dirname(uri.fsPath)), path.basename(uri.fsPath));
+        rel = path.join(
+          path.basename(path.dirname(uri.fsPath)),
+          path.basename(uri.fsPath)
+        );
       }
       rel = rel.split(path.sep).join("/");
 
@@ -306,7 +286,6 @@ export class ExampleFileProvider
         );
       }
 
-      // Non-preview so the tab stays open for free editing
       await vscode.window.showTextDocument(document, {
         preview: false,
         preserveFocus: false,
@@ -319,35 +298,39 @@ export class ExampleFileProvider
     }
   }
 
-  /** Public for run-on-device / other callers */
   public getVirtualFs(): ExampleFileSystemProvider {
     return this.virtualFs;
   }
 
-  private createTreeItems(
-    fileTree: any,
-    parentPath: string = ""
-  ): vscode.TreeItem[] {
-    const folders: vscode.TreeItem[] = [];
-    const files: vscode.TreeItem[] = [];
+  public getSources(): ExampleSource[] {
+    return this.sources.slice();
+  }
 
-    for (const key in fileTree) {
+  private createTreeItems(
+    fileTree: Record<string, any>,
+    parentPath: string,
+    sourceId: string | undefined
+  ): ExampleTreeItem[] {
+    const folders: ExampleTreeItem[] = [];
+    const files: ExampleTreeItem[] = [];
+
+    for (const key of Object.keys(fileTree).sort()) {
       const filePath = path.join(parentPath, key);
-      const treeItem = new vscode.TreeItem(
+      const isFolder = fileTree[key] !== null && typeof fileTree[key] === "object";
+      const treeItem = new ExampleTreeItem(
         key,
-        fileTree[key]
+        isFolder
           ? vscode.TreeItemCollapsibleState.Collapsed
-          : vscode.TreeItemCollapsibleState.None
+          : vscode.TreeItemCollapsibleState.None,
+        sourceId,
+        filePath,
+        isFolder ? "folder" : "file"
       );
-      treeItem.contextValue = fileTree[key] ? "folder" : "file";
-      treeItem.resourceUri = vscode.Uri.file(filePath);
-      
-      if (!fileTree[key]) {
-        // 文件项 - 不设置命令，通过 TreeView 选择事件处理
-        treeItem.tooltip = `Open file: ${key}`;
+
+      if (!isFolder) {
+        treeItem.tooltip = `Open: ${key}`;
         files.push(treeItem);
       } else {
-        // 文件夹项
         treeItem.tooltip = `Folder: ${key}`;
         folders.push(treeItem);
       }
