@@ -2,6 +2,7 @@ import { debug, info, warn, error } from "../logger";
 import ws from "ws";
 import { DeviceInfo } from "../model/device";
 import { EventEmitter } from "events";
+import { DeviceTransport } from "../ports/device_transport";
 
 const HEADER = Uint8Array.of(172, 190, 203, 202);
 const VERSION = Uint8Array.of(0);
@@ -44,7 +45,7 @@ function packUint32(value: number) {
   return Array.from(new Uint8Array(buffer));
 }
 
-export class WebSocketService extends EventEmitter {
+export class WebSocketService extends EventEmitter implements DeviceTransport {
   private ws?: ws.WebSocket;
   private hbTimeout?: NodeJS.Timeout;
   private _isRunning = false;
@@ -145,8 +146,8 @@ export class WebSocketService extends EventEmitter {
     this.emit("close", code, reason);
   }
 
-  public get isConnected() {
-    return this.ws && this.ws.readyState === ws.OPEN;
+  public get isConnected(): boolean {
+    return !!(this.ws && this.ws.readyState === ws.OPEN);
   }
 
   private unpackMessage(

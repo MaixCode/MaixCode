@@ -3,6 +3,7 @@ import { WebSocketService } from "./websocket_service";
 import { info, warn, error } from "../logger";
 import { DeviceAddr } from "../model/device";
 import { Status } from "../model/status";
+import { DeviceTransport } from "../ports/device_transport";
 
 export type FrameHandler = (deviceKey: string, data: ArrayBuffer) => void;
 
@@ -60,6 +61,11 @@ export class DeviceService {
       this.wss = undefined;
       this.device = undefined;
     }
+  }
+
+  /** Connected transport for run/debug; undefined if offline. */
+  public get transport(): DeviceTransport | undefined {
+    return this.wss;
   }
 
   public getDeviceInfo() {

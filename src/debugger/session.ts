@@ -173,13 +173,18 @@ export class MaixPyDebugSession extends DebugSession {
     //   args;
     // }
     log("launchRequest");
-    var currentDevice = Instance.instance.deviceManager.getConnectedDevice();
-    if (currentDevice.length === 0) {
-      // vscode.window.showErrorMessage("No device connected");
+    const manager = Instance.instance.deviceManager;
+    const preferred = manager.getCurrentDevice();
+    const connected = manager.getConnectedDevice();
+    const device =
+      preferred && preferred.transport?.isConnected
+        ? preferred
+        : connected[0];
+    if (!device) {
       this.sendErrorResponse(response, 0, "No device connected");
       return;
     }
-    this._runtime.start(args.program, currentDevice[0]);
+    void this._runtime.start(args.program, device);
 
     this.sendResponse(response);
   }
@@ -190,7 +195,18 @@ export class MaixPyDebugSession extends DebugSession {
     request?: DebugProtocol.Request
   ): void {
     this._runtime.stop();
+    this._runtime.dispose();
 
+    this.sendResponse(response);
+  }
+
+  protected disconnectRequest(
+    response: DebugProtocol.DisconnectResponse,
+    args: DebugProtocol.DisconnectArguments,
+    request?: DebugProtocol.Request
+  ): void {
+    this._runtime.stop();
+    this._runtime.dispose();
     this.sendResponse(response);
   }
 

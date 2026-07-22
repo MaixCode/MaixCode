@@ -4,6 +4,7 @@ import { log } from "../logger";
 import { Readable } from "stream";
 import { WebSocketServer } from "ws";
 import * as http from "http";
+import { FrameSink } from "../ports/frame_sink";
 
 interface ImageData {
   buffer: ArrayBuffer;
@@ -16,7 +17,7 @@ interface ImageData {
   };
 }
 
-export class ImageService {
+export class ImageService implements FrameSink {
   private app = express();
   private server: http.Server;
   private imageMap: Map<string, ImageData> = new Map();
