@@ -15,6 +15,7 @@ export namespace Commands {
 
   // Sidebar Commands
   export const refreshExample = "maixcode.refreshExample";
+  export const refreshExampleSource = "maixcode.refreshExampleSource";
 
   // Example Commands
   export const openExample = "maixcode.openExample";

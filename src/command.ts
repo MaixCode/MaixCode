@@ -38,6 +38,17 @@ export function initCommands(context: vscode.ExtensionContext) {
       },
     },
     {
+      name: Commands.refreshExampleSource,
+      func: (item?: { sourceId?: string }) => {
+        const id = item?.sourceId;
+        if (!id) {
+          vscode.window.showErrorMessage("No example source selected");
+          return;
+        }
+        void Instance.instance.exampleFileProvider.refreshSource(id);
+      },
+    },
+    {
       name: Commands.openExample,
       func: (arg: any) => {
         if (arg instanceof vscode.Uri) {

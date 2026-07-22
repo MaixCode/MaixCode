@@ -39,7 +39,12 @@ export function loadExampleSourceConfigs(): ExampleSourceConfig[] {
       continue;
     }
     seen.add(item.id);
-    out.push(item);
+    // Normalize legacy type name
+    const normalized = { ...item } as ExampleSourceConfig & { type: string };
+    if ((normalized as { type: string }).type === "localfile") {
+      (normalized as { type: string }).type = "local_folder";
+    }
+    out.push(normalized as ExampleSourceConfig);
   }
   return out.length ? out : DEFAULT_SOURCES.slice();
 }
@@ -71,9 +76,10 @@ export function createExampleSources(
             )
           );
           break;
-        case "localfile":
-          if (!c.path) {
-            warn(`[ExampleRegistry] localfile ${c.id} missing path`);
+        case "local_folder": {
+          const local = c as { path?: string; id: string; label?: string };
+          if (!local.path) {
+            warn(`[ExampleRegistry] local_folder ${c.id} missing path`);
             break;
           }
           sources.push(
@@ -81,10 +87,11 @@ export function createExampleSources(
               c.id,
               c.label || c.id,
               rootDir,
-              c.path
+              local.path
             )
           );
           break;
+        }
         case "github_repo":
           if (!c.owner || !c.repo) {
             warn(`[ExampleRegistry] github_repo ${c.id} missing owner/repo`);

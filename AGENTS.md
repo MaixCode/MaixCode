@@ -72,7 +72,7 @@ Webpack: single Node target bundle `src/extension.ts` → `dist/extension.js`; `
 ## Example sources
 
 - Tree first level = source `id` / label from `maixcode.exampleSources`.
-- Types: `sipeed` (CDN zip), `localfile` (`path`), `github_repo` (`owner`/`repo`/`ref`/`subdir`).
+- Types: `sipeed` (CDN zip), `local_folder` (`path`), `github_repo` (`owner`/`repo`/`ref`/`subdir`).
 - Cache layout: `globalStorage/cache/sources/<id>/...`
 - Virtual editor path: `example://examples/<id>/...`
 - Refresh: command **MaixCode: Refresh Examples** (all sources).

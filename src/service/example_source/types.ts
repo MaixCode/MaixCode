@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-export type ExampleSourceType = "sipeed" | "localfile" | "github_repo";
+export type ExampleSourceType = "sipeed" | "local_folder" | "github_repo";
 
 /** User-facing config entry (package.json / settings). */
 export type ExampleSourceConfig =
@@ -12,9 +12,9 @@ export type ExampleSourceConfig =
     }
   | {
       id: string;
-      type: "localfile";
+      type: "local_folder";
       label?: string;
-      /** Absolute path or ${workspaceFolder}/... */
+      /** Local folder path (absolute or ${workspaceFolder}/...) */
       path: string;
     }
   | {

@@ -5,7 +5,7 @@ import { log } from "../../logger";
 import { copyDir, emptyDir, ensureDir } from "./fs_util";
 
 export class LocalFileExampleSource implements ExampleSource {
-  readonly type = "localfile" as const;
+  readonly type = "local_folder" as const;
   private readonly sourcePath: string;
 
   constructor(
@@ -20,7 +20,7 @@ export class LocalFileExampleSource implements ExampleSource {
   async refresh(progress?: (msg: string) => void): Promise<void> {
     progress?.(`Syncing local ${this.label}...`);
     log(
-      `[ExampleSource:${this.id}] refresh localfile from ${this.sourcePath} -> ${this.rootDir}`
+      `[ExampleSource:${this.id}] refresh local_folder from ${this.sourcePath} -> ${this.rootDir}`
     );
     if (!fs.existsSync(this.sourcePath)) {
       throw new Error(`Local example path does not exist: ${this.sourcePath}`);

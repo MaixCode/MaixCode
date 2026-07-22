@@ -74,6 +74,12 @@
         "category": "MaixCode"
       },
       {
+        "command": "maixcode.refreshExampleSource",
+        "title": "Refresh Example Source",
+        "icon": "$(refresh)",
+        "category": "MaixCode"
+      },
+      {
         "command": "maixcode.openExample",
         "title": "Open Example",
         "category": "MaixCode"
@@ -107,6 +113,11 @@
         {
           "command": "maixcode.connectDevice",
           "when": "viewItem == maixcode-deviceIp",
+          "group": "inline"
+        },
+        {
+          "command": "maixcode.refreshExampleSource",
+          "when": "view == maixcode-example && viewItem == exampleSource",
           "group": "inline"
         }
       ],
@@ -190,7 +201,7 @@
               "label": "Official"
             }
           ],
-          "description": "Example sources shown as first-level folders in the Example view. Types: sipeed | localfile | github_repo.",
+          "description": "Example sources as first-level folders. Types: sipeed | local_folder | github_repo.",
           "items": {
             "type": "object",
             "required": [
@@ -206,7 +217,7 @@
                 "type": "string",
                 "enum": [
                   "sipeed",
-                  "localfile",
+                  "local_folder",
                   "github_repo"
                 ]
               },
@@ -220,7 +231,7 @@
               },
               "path": {
                 "type": "string",
-                "description": "localfile: absolute path or ${workspaceFolder}/..."
+                "description": "local_folder: absolute path or ${workspaceFolder}/..."
               },
               "owner": {
                 "type": "string",

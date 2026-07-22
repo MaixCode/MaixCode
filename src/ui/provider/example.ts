@@ -124,6 +124,40 @@ export class ExampleFileProvider
     this._onDidChangeTreeData.fire();
   }
 
+  /** Refresh a single first-level source by id */
+  public async refreshSource(sourceId: string): Promise<void> {
+    this.reloadSources();
+    const source = this.sources.find((s) => s.id === sourceId);
+    if (!source) {
+      vscode.window.showErrorMessage(`Example source not found: ${sourceId}`);
+      return;
+    }
+    info(`[ExampleFileProvider] Refreshing source ${sourceId}...`);
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `MaixCode: ${source.label}`,
+        cancellable: false,
+      },
+      async (progress) => {
+        try {
+          progress.report({ message: `Refreshing ${source.label}...` });
+          await source.refresh((msg) => progress.report({ message: msg }));
+          info(`[ExampleFileProvider] ${source.id} OK`);
+          vscode.window.showInformationMessage(
+            `Example source "${source.label}" refreshed.`
+          );
+        } catch (e) {
+          warn(`[ExampleFileProvider] ${source.id} failed: ${e}`);
+          vscode.window.showErrorMessage(
+            `Example source "${source.label}" failed: ${e}`
+          );
+        }
+      }
+    );
+    this._onDidChangeTreeData.fire();
+  }
+
   private setupTreeViewEvents(): void {
     this.treeView.onDidChangeSelection(async (e) => {
       if (e.selection.length > 0) {
@@ -191,7 +225,7 @@ export class ExampleFileProvider
         item.iconPath = new vscode.ThemeIcon(
           s.type === "github_repo"
             ? "github"
-            : s.type === "localfile"
+            : s.type === "local_folder"
               ? "folder-library"
               : "cloud-download"
         );
