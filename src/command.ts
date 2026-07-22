@@ -61,7 +61,11 @@ export function initCommands(context: vscode.ExtensionContext) {
     },
     {
       name: Commands.openExampleSource,
-      func: (item?: { fsPath?: string; resourceUri?: vscode.Uri }) => {
+      func: (item?: {
+        fsPath?: string;
+        resourceUri?: vscode.Uri;
+        sourceId?: string;
+      }) => {
         const uri =
           item?.resourceUri ??
           (item?.fsPath ? vscode.Uri.file(item.fsPath) : undefined);
@@ -69,7 +73,11 @@ export function initCommands(context: vscode.ExtensionContext) {
           vscode.window.showErrorMessage("No example file selected");
           return;
         }
-        void Instance.instance.exampleFileProvider.openFile(uri, true);
+        void Instance.instance.exampleFileProvider.openFile(
+          uri,
+          true,
+          item?.sourceId
+        );
       },
     },
     {

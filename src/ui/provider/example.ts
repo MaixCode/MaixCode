@@ -284,16 +284,15 @@ export class ExampleFileProvider
 
   public async openFile(
     uri: vscode.Uri,
-    source: boolean = false
+    source: boolean = false,
+    sourceId?: string
   ): Promise<void> {
     if (source) {
-      const choice = await vscode.window.showWarningMessage(
-        "Opening the on-disk/cached example source. Changes can be overwritten when you refresh this example source. Prefer the normal open (virtual copy) for editing, or use Save As.",
-        { modal: true },
-        "Open Anyway"
-      );
-      if (choice !== "Open Anyway") {
-        return;
+      // local_folder is the user's own tree; no overwrite warning
+      if (!this.isLocalFolderSource(uri.fsPath, sourceId)) {
+        void vscode.window.showWarningMessage(
+          "You are opening the cached source file. Refreshing examples may overwrite your changes."
+        );
       }
       await vscode.window.showTextDocument(uri, { preview: false });
       return;
@@ -338,6 +337,23 @@ export class ExampleFileProvider
     } catch (e) {
       vscode.window.showErrorMessage(`Failed to open example: ${e}`);
     }
+  }
+
+  private isLocalFolderSource(fsPath: string, sourceId?: string): boolean {
+    if (sourceId) {
+      const s = this.sources.find((x) => x.id === sourceId);
+      return s?.type === "local_folder";
+    }
+    for (const s of this.sources) {
+      if (s.type !== "local_folder") {
+        continue;
+      }
+      const root = s.rootDir;
+      if (fsPath === root || fsPath.startsWith(root + path.sep)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public getVirtualFs(): ExampleFileSystemProvider {
