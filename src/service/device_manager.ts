@@ -4,7 +4,12 @@ import { DeviceIpItem } from "../ui/provider/device_data";
 import { DeviceAddr } from "../model/device";
 import { Status } from "../model/status";
 import { error, info } from "../logger";
-import { defaultDeviceName } from "../constants";
+import {
+  ConfigKeys,
+  ConfigSection,
+  defaultDeviceName,
+  LastConnectedDeviceKey,
+} from "../constants";
 
 const IPREGEX =
   /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -37,6 +42,11 @@ export class DeviceManager {
   private onFrame?: (deviceKey: string, data: ArrayBuffer) => void;
   private onConnectionListChanged?: () => void;
 
+  /** After manual disconnect, skip auto-connect until user connects or setting changes */
+  private suppressAutoConnect = false;
+  /** IP currently being auto-connected (avoid duplicate attempts) */
+  private autoConnectPendingIp: string | undefined;
+
   constructor(
     private context: vscode.ExtensionContext,
     deps: DeviceManagerDeps
@@ -51,6 +61,7 @@ export class DeviceManager {
   }
 
   public connectDeviceCommand(args: any) {
+    this.suppressAutoConnect = false;
     let ip: string | undefined = undefined;
     let name: string | undefined = undefined;
     let deviceAddr: DeviceAddr | undefined = undefined;
@@ -215,6 +226,8 @@ export class DeviceManager {
 
   public disconnectDeviceCommand() {
     if (this.currentDevice) {
+      this.suppressAutoConnect = true;
+      this.autoConnectPendingIp = undefined;
       this.currentDevice.disconnect();
       this.deviceList = this.deviceList.filter(
         (deviceService) => deviceService !== this.currentDevice
@@ -235,6 +248,25 @@ export class DeviceManager {
       this.onFrame
     );
     deviceService.onConnectionStateChange = () => {
+      const ip = deviceService.device?.ip;
+      if (deviceService.wss?.isConnected && deviceService.device) {
+        void this.context.globalState.update(LastConnectedDeviceKey, {
+          name: deviceService.device.name,
+          ip: deviceService.device.ip,
+        });
+        if (this.autoConnectPendingIp === ip) {
+          this.autoConnectPendingIp = undefined;
+        }
+      } else if (!deviceService.wss) {
+        // Drop closed sessions so auto-connect / reconnect can try again
+        if (this.autoConnectPendingIp === ip) {
+          this.autoConnectPendingIp = undefined;
+        }
+        this.deviceList = this.deviceList.filter((d) => d !== deviceService);
+        if (this.currentDevice === deviceService) {
+          this.currentDevice = this.deviceList[0];
+        }
+      }
       this.notifyConnectionListChanged();
     };
     this.deviceList.push(deviceService);
@@ -247,7 +279,10 @@ export class DeviceManager {
 
   public isConnected(device: DeviceAddr) {
     return this.deviceList.some(
-      (deviceService) => deviceService.device?.ip === device.ip || deviceService.device?.name === device.name
+      (deviceService) =>
+        deviceService.wss !== undefined &&
+        (deviceService.device?.ip === device.ip ||
+          deviceService.device?.name === device.name)
     );
   }
 
@@ -281,5 +316,86 @@ export class DeviceManager {
     } else {
       return Status.offline;
     }
+  }
+
+  /**
+   * Connect a discovered device when auto-connect is enabled and nothing is online.
+   * Target order: maixcode.autoConnectTarget → last connected → first discovered.
+   */
+  public tryAutoConnect(discovered: DeviceAddr[] = this.getDiscoveredDevices()) {
+    const cfg = vscode.workspace.getConfiguration(ConfigSection);
+    if (!cfg.get<boolean>(ConfigKeys.autoConnect, true)) {
+      return;
+    }
+    if (this.suppressAutoConnect) {
+      return;
+    }
+    if (discovered.length === 0) {
+      return;
+    }
+    if (this.getConnectedDevice().length > 0) {
+      return;
+    }
+    // Already opening a socket
+    if (this.deviceList.some((d) => d.wss !== undefined)) {
+      return;
+    }
+
+    const target = this.pickAutoConnectTarget(discovered, cfg);
+    if (!target) {
+      return;
+    }
+    if (this.isConnected(target)) {
+      return;
+    }
+    if (this.autoConnectPendingIp === target.ip) {
+      return;
+    }
+
+    this.autoConnectPendingIp = target.ip;
+    info(`Auto-connect: ${target.name} (${target.ip})`);
+    this.addDevice(target);
+  }
+
+  /** Clear suppress flag (e.g. user re-enabled auto-connect in settings) */
+  public clearAutoConnectSuppress() {
+    this.suppressAutoConnect = false;
+  }
+
+  private pickAutoConnectTarget(
+    discovered: DeviceAddr[],
+    cfg: vscode.WorkspaceConfiguration
+  ): DeviceAddr | undefined {
+    const preferred = (cfg.get<string>(ConfigKeys.autoConnectTarget, "") || "")
+      .trim()
+      .toLowerCase();
+
+    if (preferred) {
+      const byPref = discovered.find(
+        (d) =>
+          d.ip.toLowerCase() === preferred ||
+          d.name.toLowerCase() === preferred ||
+          d.name.toLowerCase().startsWith(preferred)
+      );
+      if (byPref) {
+        return byPref;
+      }
+      // Preferred set but not on the network yet
+      return undefined;
+    }
+
+    const last = this.context.globalState.get<{ name?: string; ip?: string }>(
+      LastConnectedDeviceKey
+    );
+    if (last?.ip) {
+      const byLast = discovered.find(
+        (d) => d.ip === last.ip || (last.name && d.name === last.name)
+      );
+      if (byLast) {
+        return byLast;
+      }
+    }
+
+    return discovered[0];
   }
 }

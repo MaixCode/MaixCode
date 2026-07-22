@@ -7,6 +7,7 @@ import { ExampleFileProvider } from "./ui/provider/example";
 import { DeviceManager } from "./service/device_manager";
 import { ImageViewer } from "./ui/provider/image_viewer";
 import { ImageService } from "./service/image_service";
+import { ConfigKeys, ConfigSection } from "./constants";
 
 /**
  * Composition root: wires services and UI.
@@ -43,11 +44,42 @@ export class Instance {
       },
     });
 
-    this.discoveryService.onDeviceChanged = () => {
+    this.discoveryService.onDeviceChanged = (devices) => {
       this.sidebar.refresh();
+      this.deviceManager.tryAutoConnect(devices);
     };
 
     this.imageViewer = new ImageViewer(context, this.imageService);
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (
+          e.affectsConfiguration(
+            `${ConfigSection}.${ConfigKeys.autoConnect}`
+          ) ||
+          e.affectsConfiguration(
+            `${ConfigSection}.${ConfigKeys.autoConnectTarget}`
+          )
+        ) {
+          this.deviceManager.clearAutoConnectSuppress();
+          this.deviceManager.tryAutoConnect();
+        }
+        if (
+          e.affectsConfiguration(
+            `${ConfigSection}.${ConfigKeys.enableDeviceDiscovery}`
+          )
+        ) {
+          const enabled = vscode.workspace
+            .getConfiguration(ConfigSection)
+            .get<boolean>(ConfigKeys.enableDeviceDiscovery, true);
+          if (enabled) {
+            this.discoveryService.start();
+          } else {
+            this.discoveryService.stop();
+          }
+        }
+      })
+    );
   }
 
   static initInstance(context: vscode.ExtensionContext) {

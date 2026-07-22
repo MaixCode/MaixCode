@@ -3,7 +3,7 @@ import { initCommands } from "./command";
 import { error, initLogger, log } from "./logger";
 import { DebugAdapterFactory } from "./debugger/debugger";
 import { Instance } from "./instance";
-import { DebugTypeName } from "./constants";
+import { ConfigKeys, ConfigSection, DebugTypeName } from "./constants";
 import { resolveSourceForRun } from "./debugger/source_resolve";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -15,8 +15,15 @@ export function activate(context: vscode.ExtensionContext) {
     Instance.initInstance(context);
     log("Instance initialized");
 
-    Instance.instance.discoveryService.start();
-    log("Discovery service started");
+    const discoveryEnabled = vscode.workspace
+      .getConfiguration(ConfigSection)
+      .get<boolean>(ConfigKeys.enableDeviceDiscovery, true);
+    if (discoveryEnabled) {
+      Instance.instance.discoveryService.start();
+      log("Discovery service started");
+    } else {
+      log("Device discovery disabled by settings");
+    }
 
     const factory = new DebugAdapterFactory();
     context.subscriptions.push(
