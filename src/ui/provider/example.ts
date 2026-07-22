@@ -37,7 +37,7 @@ export class ExampleFileProvider
   private cacheDir: string;
   private sourcesRoot: string;
   private sources: ExampleSource[] = [];
-  private readonly virtualFs = new ExampleFileSystemProvider();
+  private readonly virtualFs: ExampleFileSystemProvider;
   private treeView: vscode.TreeView<ExampleTreeItem>;
   private refreshing = false;
 
@@ -46,6 +46,9 @@ export class ExampleFileProvider
     this.sourcesRoot = path.join(this.cacheDir, "sources");
     ensureDir(this.cacheDir);
     ensureDir(this.sourcesRoot);
+
+    // sourcesRoot enables rehydrate of example:// tabs after restart
+    this.virtualFs = new ExampleFileSystemProvider(this.sourcesRoot);
 
     this.reloadSources();
 

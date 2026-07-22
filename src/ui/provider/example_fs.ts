@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { log, warn } from "../../logger";
@@ -15,9 +16,13 @@ export type ExampleFileEntry = {
 /**
  * Writable virtual filesystem for MaixCode examples.
  * scheme: example
- * path: /<relative/path>  (e.g. example:/basic/hello_maix.py)
+ * path: /<sourceId>/<relative/path>  (e.g. example://examples/sipeed/basic/hello.py)
  *
- * Save (writeFile) keeps the virtual buffer and prompts Save As to a real path.
+ * In-memory map is populated by seedFile when opening from the tree.
+ * On restart VS Code restores tabs; missing entries are rehydrated from
+ * globalStorage cache/sources/<path> when possible.
+ *
+ * Save (writeFile) keeps the virtual buffer and prompts Save As.
  */
 export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
   static readonly scheme = "example";
@@ -27,15 +32,24 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
   readonly onDidChangeFile = this._emitter.event;
 
   private nextSaveAsShouldPrompt = true;
+  /** Absolute path to globalStorage/cache/sources */
+  private sourcesRoot: string | undefined;
 
-  constructor() {
-    // Ensure virtual root exists
+  constructor(sourcesRoot?: string) {
+    if (sourcesRoot) {
+      this.sourcesRoot = sourcesRoot;
+    }
     const now = Date.now();
     this.entries.set("/", {
       type: vscode.FileType.Directory,
       ctime: now,
       mtime: now,
     });
+  }
+
+  setSourcesRoot(sourcesRoot: string): void {
+    this.sourcesRoot = sourcesRoot;
+    log(`[ExampleFS] sourcesRoot=${sourcesRoot}`);
   }
 
   watch(
@@ -46,8 +60,7 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   stat(uri: vscode.Uri): vscode.FileStat {
-    const key = this.keyOf(uri);
-    const entry = this.entries.get(key);
+    const entry = this.ensureEntry(uri);
     if (!entry) {
       throw vscode.FileSystemError.FileNotFound(uri);
     }
@@ -61,6 +74,34 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
 
   readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
     const dirKey = this.keyOf(uri);
+    this.ensureEntry(uri);
+
+    // Prefer disk listing when we have a sources root (survives restart)
+    const diskDir = this.diskPathForKey(dirKey);
+    if (diskDir && fs.existsSync(diskDir) && fs.statSync(diskDir).isDirectory()) {
+      try {
+        const names = fs.readdirSync(diskDir).filter((n) => !n.startsWith("."));
+        const result: [string, vscode.FileType][] = [];
+        for (const name of names) {
+          const full = path.join(diskDir, name);
+          const st = fs.statSync(full);
+          result.push([
+            name,
+            st.isDirectory() ? vscode.FileType.Directory : vscode.FileType.File,
+          ]);
+        }
+        result.sort((a, b) => {
+          if (a[1] !== b[1]) {
+            return a[1] === vscode.FileType.Directory ? -1 : 1;
+          }
+          return a[0].localeCompare(b[0]);
+        });
+        return result;
+      } catch (e) {
+        warn(`[ExampleFS] readDirectory disk failed ${diskDir}: ${e}`);
+      }
+    }
+
     const dir = this.entries.get(dirKey);
     if (!dir || dir.type !== vscode.FileType.Directory) {
       throw vscode.FileSystemError.FileNotFound(uri);
@@ -91,7 +132,6 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     }
 
     return Array.from(children.entries()).sort((a, b) => {
-      // directories first, then name
       if (a[1] !== b[1]) {
         return a[1] === vscode.FileType.Directory ? -1 : 1;
       }
@@ -104,10 +144,18 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   readFile(uri: vscode.Uri): Uint8Array {
-    const key = this.keyOf(uri);
-    const entry = this.entries.get(key);
-    if (!entry || entry.type !== vscode.FileType.File || !entry.data) {
+    const entry = this.ensureEntry(uri);
+    if (!entry || entry.type !== vscode.FileType.File) {
       throw vscode.FileSystemError.FileNotFound(uri);
+    }
+    if (!entry.data) {
+      // Retry load from disk
+      this.hydrateFromDisk(this.keyOf(uri));
+      const again = this.entries.get(this.keyOf(uri));
+      if (!again?.data) {
+        throw vscode.FileSystemError.FileNotFound(uri);
+      }
+      return again.data;
     }
     return entry.data;
   }
@@ -118,7 +166,11 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     options: { create: boolean; overwrite: boolean }
   ): Promise<void> {
     const key = this.keyOf(uri);
-    const existing = this.entries.get(key);
+    let existing = this.entries.get(key);
+    if (!existing) {
+      this.hydrateFromDisk(key);
+      existing = this.entries.get(key);
+    }
     if (!existing && !options.create) {
       throw vscode.FileSystemError.FileNotFound(uri);
     }
@@ -137,7 +189,7 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
       data: content,
       ctime: existing?.ctime ?? now,
       mtime: now,
-      originFsPath: existing?.originFsPath,
+      originFsPath: existing?.originFsPath ?? this.diskPathForKey(key),
       languageId: existing?.languageId,
     };
     this.entries.set(key, entry);
@@ -161,7 +213,7 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
 
   delete(uri: vscode.Uri, options: { recursive: boolean }): void {
     const key = this.keyOf(uri);
-    const entry = this.entries.get(key);
+    const entry = this.entries.get(key) ?? this.hydrateFromDisk(key);
     if (!entry) {
       throw vscode.FileSystemError.FileNotFound(uri);
     }
@@ -171,9 +223,7 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
         (k) => k !== key && k.startsWith(prefix)
       );
       if (childKeys.length && !options.recursive) {
-        throw vscode.FileSystemError.NoPermissions(
-          "Directory is not empty"
-        );
+        throw vscode.FileSystemError.NoPermissions("Directory is not empty");
       }
       for (const k of childKeys) {
         this.entries.delete(k);
@@ -190,7 +240,8 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
   ): void {
     const oldKey = this.keyOf(oldUri);
     const newKey = this.keyOf(newUri);
-    const entry = this.entries.get(oldKey);
+    const entry =
+      this.entries.get(oldKey) ?? this.hydrateFromDisk(oldKey) ?? undefined;
     if (!entry) {
       throw vscode.FileSystemError.FileNotFound(oldUri);
     }
@@ -211,10 +262,6 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     ]);
   }
 
-  /**
-   * Create or replace a virtual example document.
-   * @param relativePath path under the examples root, e.g. "vision/hello.py" or "hello.py"
-   */
   seedFile(
     relativePath: string,
     content: string | Uint8Array,
@@ -235,7 +282,7 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
       data,
       ctime: existing?.ctime ?? now,
       mtime: now,
-      originFsPath: options?.originFsPath,
+      originFsPath: options?.originFsPath ?? this.diskPathForKey(key),
       languageId: options?.languageId,
     });
     this._emitter.fire([
@@ -253,7 +300,7 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   getEntry(uri: vscode.Uri): ExampleFileEntry | undefined {
-    return this.entries.get(this.keyOf(uri));
+    return this.ensureEntry(uri) ?? undefined;
   }
 
   getText(uri: vscode.Uri): string | undefined {
@@ -264,7 +311,6 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     return new TextDecoder("utf-8").decode(entry.data);
   }
 
-  /** Relative path without leading slash, for display / Save As defaults */
   getRelativePath(uri: vscode.Uri): string {
     return this.keyOf(uri).replace(/^\//, "");
   }
@@ -279,9 +325,89 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     }
   }
 
+  /**
+   * Ensure memory entry exists; load from cache/sources when missing.
+   * Returns undefined if neither memory nor disk has the path.
+   */
+  private ensureEntry(uri: vscode.Uri): ExampleFileEntry | undefined {
+    const key = this.keyOf(uri);
+    const existing = this.entries.get(key);
+    if (existing && (existing.type === vscode.FileType.Directory || existing.data)) {
+      return existing;
+    }
+    return this.hydrateFromDisk(key) ?? existing;
+  }
+
+  private hydrateFromDisk(key: string): ExampleFileEntry | undefined {
+    if (key === "/") {
+      return this.entries.get("/");
+    }
+    const diskPath = this.diskPathForKey(key);
+    if (!diskPath || !fs.existsSync(diskPath)) {
+      log(`[ExampleFS] hydrate miss key=${key} disk=${diskPath ?? "n/a"}`);
+      return undefined;
+    }
+
+    try {
+      const st = fs.statSync(diskPath);
+      const now = Date.now();
+      this.ensureParentDirs(key);
+
+      if (st.isDirectory()) {
+        const entry: ExampleFileEntry = {
+          type: vscode.FileType.Directory,
+          ctime: st.ctimeMs || now,
+          mtime: st.mtimeMs || now,
+          originFsPath: diskPath,
+        };
+        this.entries.set(key, entry);
+        log(`[ExampleFS] hydrate dir ${key} <- ${diskPath}`);
+        return entry;
+      }
+
+      if (st.isFile()) {
+        const data = new Uint8Array(fs.readFileSync(diskPath));
+        const entry: ExampleFileEntry = {
+          type: vscode.FileType.File,
+          data,
+          ctime: st.ctimeMs || now,
+          mtime: st.mtimeMs || now,
+          originFsPath: diskPath,
+        };
+        this.entries.set(key, entry);
+        log(
+          `[ExampleFS] hydrate file ${key} <- ${diskPath} (${data.byteLength} bytes)`
+        );
+        return entry;
+      }
+    } catch (e) {
+      warn(`[ExampleFS] hydrate failed ${key}: ${e}`);
+    }
+    return undefined;
+  }
+
+  private diskPathForKey(key: string): string | undefined {
+    if (!this.sourcesRoot) {
+      return undefined;
+    }
+    const rel = key.replace(/^\//, "");
+    if (!rel) {
+      return this.sourcesRoot;
+    }
+    // Prevent path escape
+    const resolved = path.resolve(this.sourcesRoot, rel);
+    if (
+      resolved !== this.sourcesRoot &&
+      !resolved.startsWith(this.sourcesRoot + path.sep)
+    ) {
+      warn(`[ExampleFS] blocked path escape: ${key}`);
+      return undefined;
+    }
+    return resolved;
+  }
+
   private ensureParentDirs(fileKey: string): void {
     const parts = fileKey.split("/").filter(Boolean);
-    // all but last segment
     let cur = "";
     for (let i = 0; i < parts.length - 1; i++) {
       cur += "/" + parts[i];
@@ -299,7 +425,6 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
       return;
     }
     const now = Date.now();
-    // ensure parents
     if (key !== "/") {
       const parent = key.slice(0, key.lastIndexOf("/")) || "/";
       this.ensureDir(parent);
@@ -309,12 +434,6 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
       ctime: now,
       mtime: now,
     });
-    this._emitter.fire([
-      {
-        type: vscode.FileChangeType.Created,
-        uri: this.uriFromKey(key),
-      },
-    ]);
   }
 
   private uriFromKey(key: string): vscode.Uri {
@@ -335,7 +454,6 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     let defaultUri: vscode.Uri | undefined;
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (folder) {
-      // Preserve relative folder under workspace when possible
       defaultUri = vscode.Uri.joinPath(folder.uri, ...rel.split("/"));
     } else if (originFsPath) {
       const dir = path.dirname(originFsPath);
@@ -395,7 +513,6 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     if (!s.startsWith("/")) {
       s = "/" + s;
     }
-    // collapse // and remove trailing slash (except root)
     s = s.replace(/\/+/g, "/");
     if (s.length > 1 && s.endsWith("/")) {
       s = s.slice(0, -1);
@@ -405,9 +522,7 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
 
   private normalizeRelative(relativePath: string): string {
     let s = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
-    // strip leading "extracted/" if present
     s = s.replace(/^extracted\//, "");
-    // normalize . and ..
     const parts: string[] = [];
     for (const part of s.split("/")) {
       if (!part || part === ".") {
