@@ -48,10 +48,10 @@ export class ImageService {
         
         // 添加图像元数据头
         if (imageData.metadata) {
-          if (imageData.metadata.width) res.setHeader("X-Image-Width", imageData.metadata.width.toString());
-          if (imageData.metadata.height) res.setHeader("X-Image-Height", imageData.metadata.height.toString());
-          if (imageData.metadata.colorSpace) res.setHeader("X-Image-ColorSpace", imageData.metadata.colorSpace);
-          if (imageData.metadata.format) res.setHeader("X-Image-Format", imageData.metadata.format);
+          if (imageData.metadata.width) {res.setHeader("X-Image-Width", imageData.metadata.width.toString());}
+          if (imageData.metadata.height) {res.setHeader("X-Image-Height", imageData.metadata.height.toString());}
+          if (imageData.metadata.colorSpace) {res.setHeader("X-Image-ColorSpace", imageData.metadata.colorSpace);}
+          if (imageData.metadata.format) {res.setHeader("X-Image-Format", imageData.metadata.format);}
         }
         
         res.end(Buffer.from(imageData.buffer));
@@ -466,10 +466,10 @@ export class ImageService {
         res.write(`X-Frame-Timestamp: ${imageData.timestamp}\r\n`);
         
         if (imageData.metadata) {
-          if (imageData.metadata.width) res.write(`X-Image-Width: ${imageData.metadata.width}\r\n`);
-          if (imageData.metadata.height) res.write(`X-Image-Height: ${imageData.metadata.height}\r\n`);
-          if (imageData.metadata.colorSpace) res.write(`X-Image-ColorSpace: ${imageData.metadata.colorSpace}\r\n`);
-          if (imageData.metadata.format) res.write(`X-Image-Format: ${imageData.metadata.format}\r\n`);
+          if (imageData.metadata.width) {res.write(`X-Image-Width: ${imageData.metadata.width}\r\n`);}
+          if (imageData.metadata.height) {res.write(`X-Image-Height: ${imageData.metadata.height}\r\n`);}
+          if (imageData.metadata.colorSpace) {res.write(`X-Image-ColorSpace: ${imageData.metadata.colorSpace}\r\n`);}
+          if (imageData.metadata.format) {res.write(`X-Image-Format: ${imageData.metadata.format}\r\n`);}
         }
         
         res.write(`\r\n`);

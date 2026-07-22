@@ -89,8 +89,9 @@ export class DiscoveryService {
     const networkInterfaces = os.networkInterfaces();
 
     for (let interfaceName in networkInterfaces) {
-      if (networkInterfaces && networkInterfaces[interfaceName]) {
-        for (let info of networkInterfaces[interfaceName]) {
+      const interfaces = networkInterfaces[interfaceName];
+      if (interfaces) {
+        for (let info of interfaces) {
           if (info.internal || info.family !== "IPv4") {
             continue;
           }

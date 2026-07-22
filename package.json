@@ -56,7 +56,6 @@
         "icon": "$(debug-disconnect)",
         "category": "MaixCode"
       },
-      
       {
         "command": "maixcode.discoverDevice",
         "title": "Discover Devices",
@@ -174,6 +173,7 @@
   "dependencies": {
     "@octokit/rest": "^21.0.1",
     "@vscode/debugadapter": "^1.66.0",
+    "@vscode/debugprotocol": "^1.68.0",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "axios": "^1.7.7",
     "dayjs": "^1.11.12",
