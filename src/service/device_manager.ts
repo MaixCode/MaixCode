@@ -247,6 +247,9 @@ export class DeviceManager {
       undefined,
       this.onFrame
     );
+    deviceService.onRunStateChange = () => {
+      this.notifyConnectionListChanged();
+    };
     deviceService.onConnectionStateChange = () => {
       const ip = deviceService.device?.ip;
       if (deviceService.wss?.isConnected && deviceService.device) {
@@ -311,11 +314,17 @@ export class DeviceManager {
   }
 
   public getStatus() {
-    if (this.getConnectedDevice().length > 0) {
-      return Status.online;
-    } else {
+    const connected = this.getConnectedDevice();
+    if (connected.length === 0) {
+      if (this.deviceList.some((d) => d.wss !== undefined)) {
+        return Status.connecting;
+      }
       return Status.offline;
     }
+    if (connected.some((d) => d.status === Status.running)) {
+      return Status.running;
+    }
+    return Status.online;
   }
 
   /**

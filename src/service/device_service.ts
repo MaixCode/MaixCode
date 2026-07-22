@@ -10,6 +10,8 @@ export type FrameHandler = (deviceKey: string, data: ArrayBuffer) => void;
 export class DeviceService {
   /** Optional hook for list/status UI refresh after connect lifecycle events */
   public onConnectionStateChange?: () => void;
+  /** Program run/stop on device (WebSocket isRunning) */
+  public onRunStateChange?: (running: boolean) => void;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -35,6 +37,9 @@ export class DeviceService {
       return;
     }
     this.wss = new WebSocketService(this.device.ip);
+    this.wss.on("runState", (running: boolean) => {
+      this.onRunStateChange?.(running);
+    });
     this.wss.on("close", (code, reason) => {
       info(`Device ${this.device?.name} disconnected: ${reason}`);
       this.wss = undefined;

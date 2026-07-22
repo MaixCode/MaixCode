@@ -63,6 +63,14 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
     return this._isRunning;
   }
 
+  private setRunning(running: boolean) {
+    if (this._isRunning === running) {
+      return;
+    }
+    this._isRunning = running;
+    this.emit("runState", running);
+  }
+
   public connect() {
     this.ws = new ws.WebSocket(`ws://${this.ip}:${this.port}`);
     this.ws.binaryType = "arraybuffer";
@@ -143,6 +151,7 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
     if (this.hbTimeout) {
       clearTimeout(this.hbTimeout);
     }
+    this.setRunning(false);
     this.emit("close", code, reason);
   }
 
@@ -229,7 +238,7 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
     const isSuccess = content[0] === 1;
     if (isSuccess) {
       info("Start running...");
-      this._isRunning = true;
+      this.setRunning(true);
       this.emit("run");
     } else {
       const detail = Buffer.from(content.slice(1)).toString();
@@ -254,7 +263,7 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
     this.emit("stopAck", content);
     const isSuccess = content[0] === 1;
     if (isSuccess) {
-      this._isRunning = false;
+      this.setRunning(false);
       this.emit("stop");
     }
   }
@@ -262,8 +271,8 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
   private finishCommand(content: Uint8Array) {
     const isSuccess = content.slice(0, 4).every((a) => a === 0);
     let rsp;
+    this.setRunning(false);
     if (isSuccess) {
-      this._isRunning = false;
       rsp = { code: 0, msg: "Program exited" };
     } else {
       const view = new DataView(content.slice(0, 4).buffer, 0);
@@ -376,22 +385,22 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
       const timer = setTimeout(() => {
         warn("WebSocketService.stopAndWait timed out");
         // Force local running flag so re-run can proceed
-        this._isRunning = false;
+        this.setRunning(false);
         finish(false);
       }, timeoutMs);
       const onStopAck = (content: Uint8Array) => {
         info(`WebSocketService.stopAndWait stopAck[0]=${content[0]}`);
         if (content[0] === 1) {
-          this._isRunning = false;
+          this.setRunning(false);
         }
         finish(content[0] === 1);
       };
       const onStop = () => {
-        this._isRunning = false;
+        this.setRunning(false);
         finish(true);
       };
       const onFinish = () => {
-        this._isRunning = false;
+        this.setRunning(false);
         finish(true);
       };
       this.on("stopAck", onStopAck);
