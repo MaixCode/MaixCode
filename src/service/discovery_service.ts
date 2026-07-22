@@ -3,8 +3,6 @@ import multicastDns from "multicast-dns";
 import * as vscode from "vscode";
 import os from "os";
 import { DeviceAddr } from "../model/device";
-import { Instance } from "../instance";
-import { Commands } from "../constants";
 
 export class DiscoveryService {
   // private devices: Device[] = [];
@@ -78,8 +76,7 @@ export class DiscoveryService {
           //     }
           //   });
           this.devices.push({ device: device, lastSeen: Date.now() });
-          // this.onDeviceChanged(this.devices.map((device) => device.device));
-          Instance.instance.sidebar.refresh();
+          this.notifyDevicesChanged();
         }
       }
     };
@@ -132,9 +129,12 @@ export class DiscoveryService {
     );
     if (_device.length !== this.devices.length) {
       this.devices = _device;
-      // this.onDeviceChanged(this.devices.map((device) => device.device));
-      Instance.instance.sidebar.refresh();
+      this.notifyDevicesChanged();
     }
+  }
+
+  private notifyDevicesChanged(): void {
+    this.onDeviceChanged(this.getDevices());
   }
 
   public getDevices(): DeviceAddr[] {

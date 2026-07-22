@@ -3,7 +3,6 @@ import { DeviceService } from "./device_service";
 import { DeviceIpItem } from "../ui/provider/device_data";
 import { DeviceAddr } from "../model/device";
 import { Status } from "../model/status";
-import { Instance } from "../instance";
 import { error, info } from "../logger";
 import { defaultDeviceName } from "../constants";
 
@@ -22,12 +21,34 @@ export class DeviceQuickPickItem implements vscode.QuickPickItem {
   }
 }
 
+export type DeviceManagerDeps = {
+  getDiscoveredDevices: () => DeviceAddr[];
+  onFrame?: (deviceKey: string, data: ArrayBuffer) => void;
+  /** UI refresh when connection set changes (sidebar etc.) */
+  onConnectionListChanged?: () => void;
+};
+
 export class DeviceManager {
   private deviceList: DeviceService[] = [];
 
   private currentDevice: DeviceService | undefined;
 
-  constructor(private context: vscode.ExtensionContext) {}
+  private getDiscoveredDevices: () => DeviceAddr[];
+  private onFrame?: (deviceKey: string, data: ArrayBuffer) => void;
+  private onConnectionListChanged?: () => void;
+
+  constructor(
+    private context: vscode.ExtensionContext,
+    deps: DeviceManagerDeps
+  ) {
+    this.getDiscoveredDevices = deps.getDiscoveredDevices;
+    this.onFrame = deps.onFrame;
+    this.onConnectionListChanged = deps.onConnectionListChanged;
+  }
+
+  private notifyConnectionListChanged() {
+    this.onConnectionListChanged?.();
+  }
 
   public connectDeviceCommand(args: any) {
     let ip: string | undefined = undefined;
@@ -38,7 +59,7 @@ export class DeviceManager {
     if (!args) {
       // Ask user to input ip
       var selectItems: vscode.QuickPickItem[] = [];
-      for (let _device of Instance.instance.discoveryService.getDevices()) {
+      for (let _device of this.getDiscoveredDevices()) {
         selectItems.push(new DeviceQuickPickItem(_device));
       }
       const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem>();
@@ -142,7 +163,7 @@ export class DeviceManager {
       return;
     } else if (ip && name !== undefined && name !== defaultDeviceName) {
       // 若指定 ip & name
-      let deviceList = Instance.instance.discoveryService.getDevices();
+      let deviceList = this.getDiscoveredDevices();
       deviceAddr = deviceList.find((device) => device.ip === ip && device.name === name);
       if (!deviceAddr) {
         // 若未找到，则创建新的 DeviceAddr
@@ -155,7 +176,7 @@ export class DeviceManager {
         vscode.window.showErrorMessage("Invalid IP address: " + ip);
         return;
       }
-      let deviceList = Instance.instance.discoveryService.getDevices();
+      let deviceList = this.getDiscoveredDevices();
       deviceAddr = deviceList.find((device) => device.ip === ip && device.name === name);
     } else {
       // ip, name, deviceAddr 都未指定
@@ -199,7 +220,7 @@ export class DeviceManager {
         (deviceService) => deviceService !== this.currentDevice
       );
       this.currentDevice = undefined;
-      Instance.instance.sidebar.refresh();
+      this.notifyConnectionListChanged();
       vscode.window.showInformationMessage("Disconnected from device.");
     } else {
       vscode.window.showErrorMessage("No device is currently connected.");
@@ -207,13 +228,21 @@ export class DeviceManager {
   }
 
   public addDevice(device: DeviceAddr) {
-    let deviceService = new DeviceService(this.context, device);
+    let deviceService = new DeviceService(
+      this.context,
+      device,
+      undefined,
+      this.onFrame
+    );
+    deviceService.onConnectionStateChange = () => {
+      this.notifyConnectionListChanged();
+    };
     this.deviceList.push(deviceService);
     if (this.currentDevice === undefined) {
       this.currentDevice = deviceService;
     }
     deviceService.connect();
-    Instance.instance.sidebar.refresh();
+    this.notifyConnectionListChanged();
   }
 
   public isConnected(device: DeviceAddr) {

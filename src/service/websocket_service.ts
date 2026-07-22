@@ -1,8 +1,6 @@
-import { Instance } from "../instance";
 import { debug, info, warn, error } from "../logger";
 import ws from "ws";
 import { DeviceInfo } from "../model/device";
-import sharp from "sharp";
 import { EventEmitter } from "events";
 
 const HEADER = Uint8Array.of(172, 190, 203, 202);
@@ -215,7 +213,6 @@ export class WebSocketService extends EventEmitter {
     if (isSuccess) {
       info("Connect device successful");
       this.sendMessage(COMMAND.DeviceInfo, "");
-      Instance.instance.sidebar.refresh();
     } else {
       const msg = `Connect device failed: ${Buffer.from(
         content.slice(1)
@@ -284,7 +281,6 @@ export class WebSocketService extends EventEmitter {
   private deviceInfoAckCommand(content: Uint8Array) {
     this.deviceInfo = DeviceInfo.fromText(Buffer.from(content).toString());
     this.emit("deviceInfo", this.deviceInfo);
-    Instance.instance.sidebar.refresh();
   }
 
   private imgFormatCommand(content: Uint8Array) {

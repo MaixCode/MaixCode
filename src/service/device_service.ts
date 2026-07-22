@@ -1,19 +1,25 @@
 import * as vscode from "vscode";
 import { WebSocketService } from "./websocket_service";
 import { info, warn, error } from "../logger";
-import { DeviceIpItem } from "../ui/provider/device_data";
 import { DeviceAddr } from "../model/device";
-import { Instance } from "../instance";
 import { Status } from "../model/status";
 
+export type FrameHandler = (deviceKey: string, data: ArrayBuffer) => void;
+
 export class DeviceService {
-  private is_running = false;
+  /** Optional hook for list/status UI refresh after connect lifecycle events */
+  public onConnectionStateChange?: () => void;
 
   constructor(
     private context: vscode.ExtensionContext,
     public device?: DeviceAddr,
-    public wss?: WebSocketService
+    public wss?: WebSocketService,
+    private onFrame?: FrameHandler
   ) {}
+
+  public setFrameHandler(handler: FrameHandler | undefined) {
+    this.onFrame = handler;
+  }
 
   public connect(device?: DeviceAddr) {
     if (device) {
@@ -31,12 +37,19 @@ export class DeviceService {
     this.wss.on("close", (code, reason) => {
       info(`Device ${this.device?.name} disconnected: ${reason}`);
       this.wss = undefined;
+      this.onConnectionStateChange?.();
     });
     this.wss.on("img", (data: ArrayBuffer) => {
-      Instance.instance.imageService.setImage(
-        this.device?.name || "Undefined",
-        data
-      );
+      const key = this.device?.name || this.device?.ip || "Undefined";
+      this.onFrame?.(key, data);
+    });
+    this.wss.on("authAck", (content: Uint8Array) => {
+      if (content[0] === 1) {
+        this.onConnectionStateChange?.();
+      }
+    });
+    this.wss.on("deviceInfo", () => {
+      this.onConnectionStateChange?.();
     });
     this.wss.connect();
   }

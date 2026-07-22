@@ -1,7 +1,5 @@
 import * as vscode from "vscode";
-import { DeviceService } from "./service/device_service";
 import { DiscoveryService } from "./service/discovery_service";
-import { WebSocketService } from "./service/websocket_service";
 import { Sidebar } from "./ui/sidebar";
 import { StatusBar } from "./ui/statusbar";
 import { Status } from "./model/status";
@@ -10,6 +8,10 @@ import { DeviceManager } from "./service/device_manager";
 import { ImageViewer } from "./ui/provider/image_viewer";
 import { ImageService } from "./service/image_service";
 
+/**
+ * Composition root: wires services and UI.
+ * Lower layers (protocol/discovery/device) must not import this class.
+ */
 export class Instance {
   public static instance: Instance;
 
@@ -24,12 +26,27 @@ export class Instance {
   private status: Status = Status.offline;
 
   private constructor(context: vscode.ExtensionContext) {
-    this.deviceManager = new DeviceManager(context);
-    this.discoveryService = new DiscoveryService(context);
     this.imageService = new ImageService(context);
+    this.discoveryService = new DiscoveryService(context);
     this.sidebar = new Sidebar(context);
     this.statusbar = new StatusBar();
     this.exampleFileProvider = new ExampleFileProvider(context);
+
+    this.deviceManager = new DeviceManager(context, {
+      getDiscoveredDevices: () => this.discoveryService.getDevices(),
+      onFrame: (deviceKey, data) => {
+        this.imageService.setImage(deviceKey, data);
+      },
+      onConnectionListChanged: () => {
+        this.sidebar.refresh();
+        this.statusbar.updateByStatus(this.deviceManager.getStatus());
+      },
+    });
+
+    this.discoveryService.onDeviceChanged = () => {
+      this.sidebar.refresh();
+    };
+
     this.imageViewer = new ImageViewer(context, this.imageService);
   }
 
