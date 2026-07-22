@@ -4,6 +4,7 @@ import { error, initLogger, log } from "./logger";
 import { DebugAdapterFactory } from "./debugger/debugger";
 import { Instance } from "./instance";
 import { DebugTypeName } from "./constants";
+import { resolveSourceForRun } from "./debugger/source_resolve";
 
 export function activate(context: vscode.ExtensionContext) {
   try {
@@ -40,15 +41,20 @@ export function activate(context: vscode.ExtensionContext) {
           if (!config.name) {
             config.name = "MaixPy: Run Current File on Device";
           }
-          if (!config.program) {
-            const editor = vscode.window.activeTextEditor;
-            if (editor) {
-              config.program = editor.document.uri.fsPath;
-              log(`[DebugConfigurationProvider] program from active editor: ${config.program}`);
-            } else {
-              log("[DebugConfigurationProvider] no program and no active editor");
-              return undefined; // abort
-            }
+          try {
+            const resolved = resolveSourceForRun(
+              typeof config.program === "string" ? config.program : undefined
+            );
+            // Prefer absolute fs path; runtime can still use editor content for example:
+            config.program = resolved.fsPath || resolved.label;
+            log(
+              `[DebugConfigurationProvider] resolved program=${config.program}`
+            );
+          } catch (e) {
+            log(
+              `[DebugConfigurationProvider] resolve failed: ${e}`
+            );
+            return undefined;
           }
           return config;
         },

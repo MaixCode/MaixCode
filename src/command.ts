@@ -3,6 +3,7 @@ import { ImageViewer } from "./ui/provider/image_viewer";
 import { Instance } from "./instance";
 import { Commands, DebugTypeName } from "./constants";
 import { error, formatUnknown, log, showLog } from "./logger";
+import { resolveSourceForRun } from "./debugger/source_resolve";
 
 export function initCommands(context: vscode.ExtensionContext) {
   const commandList = [
@@ -64,9 +65,23 @@ export function initCommands(context: vscode.ExtensionContext) {
           log("[Command] runOnDevice: no active editor");
           return;
         }
-        const program = editor.document.uri.fsPath;
-        if (editor.document.isDirty) {
+        // Save only real files; example:/untitled cannot save to disk the same way
+        if (
+          editor.document.isDirty &&
+          editor.document.uri.scheme === "file"
+        ) {
           await editor.document.save();
+        }
+        let program: string;
+        try {
+          const resolved = resolveSourceForRun();
+          program = resolved.fsPath || resolved.label;
+          log(
+            `[Command] runOnDevice resolved label=${resolved.label} fsPath=${resolved.fsPath ?? "n/a"}`
+          );
+        } catch (e) {
+          error(`[Command] resolve source failed: ${formatUnknown(e)}`, true);
+          return;
         }
         const connected = Instance.instance.deviceManager.getConnectedDevice();
         log(`[Command] runOnDevice program=${program} connected=${connected.length}`);

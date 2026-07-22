@@ -4,6 +4,11 @@ import { Status } from "../model/status";
 import { DeviceTransport } from "../ports/device_transport";
 import { RunSession } from "../service/run_session";
 import { error as logError, formatUnknown, log, warn } from "../logger";
+import {
+  readResolvedSource,
+  resolveSourceForRun,
+  ResolvedSource,
+} from "./source_resolve";
 
 export interface FileAccessor {
   isWindows: boolean;
@@ -90,9 +95,37 @@ export class MaixPyRuntime extends EventEmitter {
         }
       }
 
-      const sourceFile = await this.loadSource(program);
+      let resolved: ResolvedSource;
+      try {
+        resolved = resolveSourceForRun(program);
+      } catch (e) {
+        const msg = `Cannot resolve source for '${program}': ${formatUnknown(e)}`;
+        logError(`[MaixPyRuntime] ${msg}`);
+        this.sendEvent("output", "err", msg);
+        this.sendEvent("end");
+        return;
+      }
+
+      this._sourceFile = resolved.label;
+      log(
+        `[MaixPyRuntime] resolved source label=${resolved.label} fsPath=${resolved.fsPath ?? "n/a"} hasInline=${resolved.content !== undefined}`
+      );
+
+      let sourceFile: Uint8Array;
+      try {
+        sourceFile = await readResolvedSource(resolved, (p) =>
+          this.fileAccessor.readFile(p)
+        );
+      } catch (e) {
+        const msg = `Source file not found or unreadable: ${resolved.label}\n${formatUnknown(e)}`;
+        logError(`[MaixPyRuntime] ${msg}`);
+        this.sendEvent("output", "err", msg);
+        this.sendEvent("end");
+        return;
+      }
+
       if (!sourceFile || sourceFile.byteLength === 0) {
-        const msg = `Source file not found or empty: ${program}`;
+        const msg = `Source file empty: ${resolved.label}`;
         logError(`[MaixPyRuntime] ${msg}`);
         this.sendEvent("output", "err", msg);
         this.sendEvent("end");
@@ -117,7 +150,7 @@ export class MaixPyRuntime extends EventEmitter {
       this.sendEvent(
         "output",
         "out",
-        `[MaixCode] Running ${program} on ${transport.ip} (${code.length} chars)\n`
+        `[MaixCode] Running ${resolved.label} on ${transport.ip} (${code.length} chars)\n`
       );
 
       const session = new RunSession(transport);
@@ -140,7 +173,6 @@ export class MaixPyRuntime extends EventEmitter {
           this.sendEvent("end");
         },
         onImg: (data) => {
-          // high frequency — debug level only via log sparingly
           this.sendEvent("img", data);
         },
       });
@@ -215,35 +247,5 @@ export class MaixPyRuntime extends EventEmitter {
         logError(`[MaixPyRuntime] emit(${event}) failed: ${formatUnknown(e)}`);
       }
     }, 0);
-  }
-
-  private async loadSource(file: string): Promise<Uint8Array | undefined> {
-    const normalized = this.normalizePathAndCasing(file);
-    this._sourceFile = normalized;
-    log(`[MaixPyRuntime] loadSource file=${file} normalized=${normalized}`);
-    try {
-      return await this.fileAccessor.readFile(file);
-    } catch (e1) {
-      logError(`[MaixPyRuntime] readFile(${file}) failed: ${formatUnknown(e1)}`);
-      if (normalized !== file) {
-        try {
-          log(`[MaixPyRuntime] retry readFile(${normalized})`);
-          return await this.fileAccessor.readFile(normalized);
-        } catch (e2) {
-          logError(
-            `[MaixPyRuntime] readFile(${normalized}) failed: ${formatUnknown(e2)}`
-          );
-          return undefined;
-        }
-      }
-      return undefined;
-    }
-  }
-
-  private normalizePathAndCasing(path: string) {
-    if (this.fileAccessor.isWindows) {
-      return path.replace(/\//g, "\\").toLowerCase();
-    }
-    return path.replace(/\\/g, "/");
   }
 }
