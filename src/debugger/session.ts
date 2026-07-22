@@ -207,13 +207,9 @@ export class MaixPyDebugSession extends DebugSession {
     request?: DebugProtocol.Request
   ): void {
     log(`[MaixPyDebugSession] terminateRequest launched=${this._launched}`);
-    try {
-      this._runtime.stop();
-      this._runtime.dispose();
-    } catch (e) {
-      error(`[MaixPyDebugSession] terminate cleanup: ${formatUnknown(e)}`);
-    }
+    // Respond first so UI stays responsive; then stop device and terminate session
     this.sendResponse(response);
+    void this.shutdownDebug("terminate");
   }
 
   protected disconnectRequest(
@@ -224,13 +220,30 @@ export class MaixPyDebugSession extends DebugSession {
     log(
       `[MaixPyDebugSession] disconnectRequest terminateDebuggee=${args.terminateDebuggee} suspend=${args.suspendDebuggee}`
     );
+    this.sendResponse(response);
+    // VS Code may send disconnect without waiting for TerminatedEvent on first click;
+    // always end the debug session after stop.
+    void this.shutdownDebug("disconnect");
+  }
+
+  private _shuttingDown = false;
+
+  private async shutdownDebug(reason: string): Promise<void> {
+    if (this._shuttingDown) {
+      log(`[MaixPyDebugSession] shutdownDebug already in progress (${reason})`);
+      return;
+    }
+    this._shuttingDown = true;
+    log(`[MaixPyDebugSession] shutdownDebug begin reason=${reason}`);
     try {
-      this._runtime.stop();
+      // Stop device and emit end -> TerminatedEvent (via runtime "end" handler)
+      await this._runtime.requestStop(true);
       this._runtime.dispose();
     } catch (e) {
-      error(`[MaixPyDebugSession] disconnect cleanup: ${formatUnknown(e)}`);
+      error(`[MaixPyDebugSession] shutdownDebug failed: ${formatUnknown(e)}`);
+      this.sendEvent(new TerminatedEvent());
     }
-    this.sendResponse(response);
+    log(`[MaixPyDebugSession] shutdownDebug done reason=${reason}`);
   }
 
   protected cancelRequest(

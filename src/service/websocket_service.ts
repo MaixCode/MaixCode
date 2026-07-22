@@ -232,10 +232,12 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
       this._isRunning = true;
       this.emit("run");
     } else {
-      const msg = `Device execute code failed: ${Buffer.from(
-        content.slice(1)
-      )}`;
-      error(msg);
+      const detail = Buffer.from(content.slice(1)).toString();
+      const msg = detail
+        ? `Device execute code failed: ${detail}`
+        : "Device execute code failed";
+      // Keep as warn — busy/already-running is handled by RunSession retry
+      warn(msg);
       this.emit("error", { code: -1, msg });
     }
   }
@@ -343,5 +345,59 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
     } catch (e) {
       error(`WebSocketService.stopCode failed: ${e}`);
     }
+  }
+
+  /**
+   * Stop device script and wait for stopAck or finish.
+   */
+  public stopAndWait(timeoutMs = 3000): Promise<boolean> {
+    info(`WebSocketService.stopAndWait ip=${this.ip} isRunning=${this._isRunning}`);
+    if (!this.isConnected) {
+      return Promise.resolve(true);
+    }
+    if (!this._isRunning) {
+      // Still send stop in case device flag is stale
+      this.stopCode();
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (ok: boolean) => {
+        if (done) {
+          return;
+        }
+        done = true;
+        clearTimeout(timer);
+        this.off("stopAck", onStopAck);
+        this.off("stop", onStop);
+        this.off("finish", onFinish);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => {
+        warn("WebSocketService.stopAndWait timed out");
+        // Force local running flag so re-run can proceed
+        this._isRunning = false;
+        finish(false);
+      }, timeoutMs);
+      const onStopAck = (content: Uint8Array) => {
+        info(`WebSocketService.stopAndWait stopAck[0]=${content[0]}`);
+        if (content[0] === 1) {
+          this._isRunning = false;
+        }
+        finish(content[0] === 1);
+      };
+      const onStop = () => {
+        this._isRunning = false;
+        finish(true);
+      };
+      const onFinish = () => {
+        this._isRunning = false;
+        finish(true);
+      };
+      this.on("stopAck", onStopAck);
+      this.on("stop", onStop);
+      this.on("finish", onFinish);
+      this.stopCode();
+    });
   }
 }
