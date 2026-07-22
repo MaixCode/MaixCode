@@ -285,7 +285,15 @@ export class ExampleFileProvider
         (await ExampleFileProvider.guessLanguageFromPath(uri.fsPath)) ||
         "plaintext";
 
-      const virtualUri = this.virtualFs.seedFile(path.basename(uri.fsPath), fileContent, {
+      const extractRoot = path.join(this.cacheDir, "extracted");
+      let rel = path.relative(extractRoot, uri.fsPath);
+      if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+        // Fallback: keep folder name + file when outside extract root
+        rel = path.join(path.basename(path.dirname(uri.fsPath)), path.basename(uri.fsPath));
+      }
+      rel = rel.split(path.sep).join("/");
+
+      const virtualUri = this.virtualFs.seedFile(rel, fileContent, {
         originFsPath: uri.fsPath,
         languageId: language,
       });

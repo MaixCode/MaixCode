@@ -3,7 +3,8 @@ import * as vscode from "vscode";
 import { log, warn } from "../../logger";
 
 export type ExampleFileEntry = {
-  data: Uint8Array;
+  type: vscode.FileType;
+  data?: Uint8Array;
   ctime: number;
   mtime: number;
   /** Original cached example path on disk (read-only source), if any */
@@ -14,18 +15,28 @@ export type ExampleFileEntry = {
 /**
  * Writable virtual filesystem for MaixCode examples.
  * scheme: example
- * path: /<filename>  (e.g. example:/hello_maix.py)
+ * path: /<relative/path>  (e.g. example:/basic/hello_maix.py)
  *
  * Save (writeFile) keeps the virtual buffer and prompts Save As to a real path.
  */
 export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
   static readonly scheme = "example";
 
-  private readonly files = new Map<string, ExampleFileEntry>();
+  private readonly entries = new Map<string, ExampleFileEntry>();
   private readonly _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
   readonly onDidChangeFile = this._emitter.event;
 
   private nextSaveAsShouldPrompt = true;
+
+  constructor() {
+    // Ensure virtual root exists
+    const now = Date.now();
+    this.entries.set("/", {
+      type: vscode.FileType.Directory,
+      ctime: now,
+      mtime: now,
+    });
+  }
 
   watch(
     _uri: vscode.Uri,
@@ -36,32 +47,66 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
 
   stat(uri: vscode.Uri): vscode.FileStat {
     const key = this.keyOf(uri);
-    const entry = this.files.get(key);
+    const entry = this.entries.get(key);
     if (!entry) {
       throw vscode.FileSystemError.FileNotFound(uri);
     }
     return {
-      type: vscode.FileType.File,
+      type: entry.type,
       ctime: entry.ctime,
       mtime: entry.mtime,
-      size: entry.data.byteLength,
+      size: entry.data?.byteLength ?? 0,
     };
   }
 
-  readDirectory(_uri: vscode.Uri): [string, vscode.FileType][] {
-    return [];
+  readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
+    const dirKey = this.keyOf(uri);
+    const dir = this.entries.get(dirKey);
+    if (!dir || dir.type !== vscode.FileType.Directory) {
+      throw vscode.FileSystemError.FileNotFound(uri);
+    }
+
+    const prefix = dirKey === "/" ? "/" : dirKey + "/";
+    const children = new Map<string, vscode.FileType>();
+
+    for (const key of this.entries.keys()) {
+      if (key === dirKey || !key.startsWith(prefix)) {
+        continue;
+      }
+      const rest = key.slice(prefix.length);
+      if (!rest) {
+        continue;
+      }
+      const slash = rest.indexOf("/");
+      const name = slash === -1 ? rest : rest.slice(0, slash);
+      if (children.has(name)) {
+        continue;
+      }
+      if (slash === -1) {
+        const child = this.entries.get(prefix + name);
+        children.set(name, child?.type ?? vscode.FileType.File);
+      } else {
+        children.set(name, vscode.FileType.Directory);
+      }
+    }
+
+    return Array.from(children.entries()).sort((a, b) => {
+      // directories first, then name
+      if (a[1] !== b[1]) {
+        return a[1] === vscode.FileType.Directory ? -1 : 1;
+      }
+      return a[0].localeCompare(b[0]);
+    });
   }
 
-  createDirectory(_uri: vscode.Uri): void {
-    throw vscode.FileSystemError.NoPermissions(
-      "Example virtual FS does not support directories"
-    );
+  createDirectory(uri: vscode.Uri): void {
+    this.ensureDir(this.keyOf(uri));
   }
 
   readFile(uri: vscode.Uri): Uint8Array {
     const key = this.keyOf(uri);
-    const entry = this.files.get(key);
-    if (!entry) {
+    const entry = this.entries.get(key);
+    if (!entry || entry.type !== vscode.FileType.File || !entry.data) {
       throw vscode.FileSystemError.FileNotFound(uri);
     }
     return entry.data;
@@ -73,23 +118,29 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     options: { create: boolean; overwrite: boolean }
   ): Promise<void> {
     const key = this.keyOf(uri);
-    const existing = this.files.get(key);
+    const existing = this.entries.get(key);
     if (!existing && !options.create) {
       throw vscode.FileSystemError.FileNotFound(uri);
+    }
+    if (existing && existing.type === vscode.FileType.Directory) {
+      throw vscode.FileSystemError.FileIsADirectory(uri);
     }
     if (existing && !options.overwrite) {
       throw vscode.FileSystemError.FileExists(uri);
     }
 
+    this.ensureParentDirs(key);
+
     const now = Date.now();
     const entry: ExampleFileEntry = {
+      type: vscode.FileType.File,
       data: content,
       ctime: existing?.ctime ?? now,
       mtime: now,
       originFsPath: existing?.originFsPath,
       languageId: existing?.languageId,
     };
-    this.files.set(key, entry);
+    this.entries.set(key, entry);
     this._emitter.fire([
       {
         type: existing
@@ -103,52 +154,84 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
       `[ExampleFS] writeFile ${uri.toString()} (${content.byteLength} bytes)`
     );
 
-    // Ctrl+S / Save: offer Save As (do not overwrite the cached example on disk)
     if (this.nextSaveAsShouldPrompt) {
       await this.promptSaveAs(uri, content, entry.originFsPath);
     }
   }
 
-  delete(uri: vscode.Uri, _options: { recursive: boolean }): void {
+  delete(uri: vscode.Uri, options: { recursive: boolean }): void {
     const key = this.keyOf(uri);
-    if (!this.files.has(key)) {
+    const entry = this.entries.get(key);
+    if (!entry) {
       throw vscode.FileSystemError.FileNotFound(uri);
     }
-    this.files.delete(key);
+    if (entry.type === vscode.FileType.Directory) {
+      const prefix = key === "/" ? "/" : key + "/";
+      const childKeys = [...this.entries.keys()].filter(
+        (k) => k !== key && k.startsWith(prefix)
+      );
+      if (childKeys.length && !options.recursive) {
+        throw vscode.FileSystemError.NoPermissions(
+          "Directory is not empty"
+        );
+      }
+      for (const k of childKeys) {
+        this.entries.delete(k);
+      }
+    }
+    this.entries.delete(key);
     this._emitter.fire([{ type: vscode.FileChangeType.Deleted, uri }]);
   }
 
   rename(
-    _oldUri: vscode.Uri,
-    _newUri: vscode.Uri,
-    _options: { overwrite: boolean }
+    oldUri: vscode.Uri,
+    newUri: vscode.Uri,
+    options: { overwrite: boolean }
   ): void {
-    throw vscode.FileSystemError.NoPermissions(
-      "Rename is not supported for example virtual files"
-    );
+    const oldKey = this.keyOf(oldUri);
+    const newKey = this.keyOf(newUri);
+    const entry = this.entries.get(oldKey);
+    if (!entry) {
+      throw vscode.FileSystemError.FileNotFound(oldUri);
+    }
+    if (this.entries.has(newKey) && !options.overwrite) {
+      throw vscode.FileSystemError.FileExists(newUri);
+    }
+    if (entry.type === vscode.FileType.Directory) {
+      throw vscode.FileSystemError.NoPermissions(
+        "Renaming directories is not supported for example virtual files"
+      );
+    }
+    this.ensureParentDirs(newKey);
+    this.entries.delete(oldKey);
+    this.entries.set(newKey, { ...entry, mtime: Date.now() });
+    this._emitter.fire([
+      { type: vscode.FileChangeType.Deleted, uri: oldUri },
+      { type: vscode.FileChangeType.Created, uri: newUri },
+    ]);
   }
 
   /**
-   * Create or replace a virtual example document and return its URI.
+   * Create or replace a virtual example document.
+   * @param relativePath path under the examples root, e.g. "vision/hello.py" or "hello.py"
    */
   seedFile(
-    fileName: string,
+    relativePath: string,
     content: string | Uint8Array,
     options?: { originFsPath?: string; languageId?: string }
   ): vscode.Uri {
-    const base = path.basename(fileName);
-    const uri = vscode.Uri.from({
-      scheme: ExampleFileSystemProvider.scheme,
-      path: "/" + base,
-    });
+    const rel = this.normalizeRelative(relativePath);
+    const key = "/" + rel;
+    const uri = this.uriFromKey(key);
     const data =
       typeof content === "string"
         ? new TextEncoder().encode(content)
         : content;
     const now = Date.now();
-    const key = this.keyOf(uri);
-    const existing = this.files.get(key);
-    this.files.set(key, {
+    this.ensureParentDirs(key);
+    const existing = this.entries.get(key);
+    this.entries.set(key, {
+      type: vscode.FileType.File,
       data,
       ctime: existing?.ctime ?? now,
       mtime: now,
@@ -163,23 +246,29 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
         uri,
       },
     ]);
-    log(`[ExampleFS] seedFile ${uri.toString()} origin=${options?.originFsPath ?? "-"}`);
+    log(
+      `[ExampleFS] seedFile ${uri.toString()} origin=${options?.originFsPath ?? "-"}`
+    );
     return uri;
   }
 
   getEntry(uri: vscode.Uri): ExampleFileEntry | undefined {
-    return this.files.get(this.keyOf(uri));
+    return this.entries.get(this.keyOf(uri));
   }
 
   getText(uri: vscode.Uri): string | undefined {
     const entry = this.getEntry(uri);
-    if (!entry) {
+    if (!entry?.data) {
       return undefined;
     }
     return new TextDecoder("utf-8").decode(entry.data);
   }
 
-  /** Temporarily skip Save As (e.g. internal writes). */
+  /** Relative path without leading slash, for display / Save As defaults */
+  getRelativePath(uri: vscode.Uri): string {
+    return this.keyOf(uri).replace(/^\//, "");
+  }
+
   async withSilentWrite<T>(fn: () => Promise<T>): Promise<T> {
     const prev = this.nextSaveAsShouldPrompt;
     this.nextSaveAsShouldPrompt = false;
@@ -190,18 +279,65 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     }
   }
 
+  private ensureParentDirs(fileKey: string): void {
+    const parts = fileKey.split("/").filter(Boolean);
+    // all but last segment
+    let cur = "";
+    for (let i = 0; i < parts.length - 1; i++) {
+      cur += "/" + parts[i];
+      this.ensureDir(cur);
+    }
+  }
+
+  private ensureDir(dirKey: string): void {
+    const key = dirKey === "" ? "/" : this.normalizeKey(dirKey);
+    const existing = this.entries.get(key);
+    if (existing) {
+      if (existing.type !== vscode.FileType.Directory) {
+        throw vscode.FileSystemError.FileNotADirectory(this.uriFromKey(key));
+      }
+      return;
+    }
+    const now = Date.now();
+    // ensure parents
+    if (key !== "/") {
+      const parent = key.slice(0, key.lastIndexOf("/")) || "/";
+      this.ensureDir(parent);
+    }
+    this.entries.set(key, {
+      type: vscode.FileType.Directory,
+      ctime: now,
+      mtime: now,
+    });
+    this._emitter.fire([
+      {
+        type: vscode.FileChangeType.Created,
+        uri: this.uriFromKey(key),
+      },
+    ]);
+  }
+
+  private uriFromKey(key: string): vscode.Uri {
+    return vscode.Uri.from({
+      scheme: ExampleFileSystemProvider.scheme,
+      authority: "examples",
+      path: key.startsWith("/") ? key : "/" + key,
+    });
+  }
+
   private async promptSaveAs(
     uri: vscode.Uri,
     content: Uint8Array,
     originFsPath?: string
   ): Promise<void> {
-    const defaultName = path.basename(uri.path) || "example.py";
+    const rel = this.getRelativePath(uri);
+    const defaultName = path.basename(rel) || "example.py";
     let defaultUri: vscode.Uri | undefined;
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (folder) {
-      defaultUri = vscode.Uri.joinPath(folder.uri, defaultName);
+      // Preserve relative folder under workspace when possible
+      defaultUri = vscode.Uri.joinPath(folder.uri, ...rel.split("/"));
     } else if (originFsPath) {
-      // Suggest next to origin but with a copy suffix so cache is not overwritten by accident
       const dir = path.dirname(originFsPath);
       const ext = path.extname(defaultName);
       const stem = path.basename(defaultName, ext);
@@ -209,7 +345,7 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     }
 
     const filters: { [name: string]: string[] } = {
-      "Python": ["py"],
+      Python: ["py"],
       "All files": ["*"],
     };
     const ext = path.extname(defaultName).replace(/^\./, "");
@@ -251,8 +387,38 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   private keyOf(uri: vscode.Uri): string {
-    // Normalize path to /basename
-    const base = path.posix.basename(uri.path.replace(/\\/g, "/")) || uri.path;
-    return "/" + base.replace(/^\//, "");
+    return this.normalizeKey(uri.path || "/");
+  }
+
+  private normalizeKey(p: string): string {
+    let s = p.replace(/\\/g, "/");
+    if (!s.startsWith("/")) {
+      s = "/" + s;
+    }
+    // collapse // and remove trailing slash (except root)
+    s = s.replace(/\/+/g, "/");
+    if (s.length > 1 && s.endsWith("/")) {
+      s = s.slice(0, -1);
+    }
+    return s || "/";
+  }
+
+  private normalizeRelative(relativePath: string): string {
+    let s = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+    // strip leading "extracted/" if present
+    s = s.replace(/^extracted\//, "");
+    // normalize . and ..
+    const parts: string[] = [];
+    for (const part of s.split("/")) {
+      if (!part || part === ".") {
+        continue;
+      }
+      if (part === "..") {
+        parts.pop();
+        continue;
+      }
+      parts.push(part);
+    }
+    return parts.join("/") || "untitled.py";
   }
 }

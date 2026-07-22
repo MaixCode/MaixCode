@@ -52,20 +52,21 @@ function resolveFromDocument(
 ): ResolvedSource | undefined {
   const uri = doc.uri;
 
-  // example:/hello_maix.py (writable virtual FS) or legacy example:name?fsPath
+  // example:/dir/hello_maix.py (writable virtual FS) or legacy example:name?fsPath
   if (uri.scheme === "example") {
     const realPath = uri.query ? decodeURIComponent(uri.query) : undefined;
-    const base = path.basename(uri.path || program || "example.py");
+    const rel = (uri.path || program || "example.py").replace(/^\/+/, "");
+    const label = rel || path.basename(program || "example.py");
     // Always prefer live editor text so free edits are what we run
     if (realPath && path.isAbsolute(realPath)) {
       return {
-        label: base,
+        label,
         fsPath: realPath,
         content: doc.getText(),
       };
     }
     return {
-      label: base,
+      label,
       content: doc.getText(),
     };
   }
