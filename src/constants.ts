@@ -32,6 +32,10 @@ export namespace ConfigKeys {
   export const enableDeviceDiscovery = "enableDeviceDiscovery";
   export const autoConnect = "autoConnect";
   export const autoConnectTarget = "autoConnectTarget";
+  export const imageServicePort = "imageServicePort";
+  export const imageViewerDefaultMode = "imageViewerDefaultMode";
+  export const imageHttpIntervalMs = "imageHttpIntervalMs";
+  export const imageViewerAutoStart = "imageViewerAutoStart";
 }
 
 /** globalState key: last successfully connected device { name, ip } */

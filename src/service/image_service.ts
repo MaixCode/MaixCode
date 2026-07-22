@@ -1,570 +1,544 @@
 import * as vscode from "vscode";
 import express from "express";
-import { log } from "../logger";
-import { Readable } from "stream";
-import { WebSocketServer } from "ws";
+import { log, warn } from "../logger";
+import { WebSocket, WebSocketServer } from "ws";
 import * as http from "http";
 import { FrameSink } from "../ports/frame_sink";
+import { Frame, FrameMetadata, FrameStore } from "./frame_store";
+import { ConfigKeys, ConfigSection } from "../constants";
 
-interface ImageData {
-  buffer: ArrayBuffer;
-  timestamp: number;
-  metadata?: {
-    width?: number;
-    height?: number;
-    colorSpace?: string;
-    format?: string;
-  };
+const EXPOSE_HEADERS =
+  "X-Frame-Timestamp, X-Image-Width, X-Image-Height, X-Image-ColorSpace, X-Image-Format, ETag";
+
+const WS_BUFFERED_LIMIT = 2 * 1024 * 1024;
+
+interface WsClientState {
+  key?: string;
+  mode: "push" | "pull";
 }
 
+/**
+ * Local HTTP + WebSocket + MJPEG adapters over a shared FrameStore.
+ * Device frames enter via FrameSink.setImage (composition root).
+ */
 export class ImageService implements FrameSink {
-  private app = express();
-  private server: http.Server;
-  private imageMap: Map<string, ImageData> = new Map();
-  private wss: WebSocketServer;
-  private streamClients: Map<string, Set<http.ServerResponse>> = new Map();
+  public readonly store: FrameStore;
+  private readonly app = express();
+  private server: http.Server | undefined;
+  private wss: WebSocketServer | undefined;
+  private readonly streamClients = new Map<string, Set<http.ServerResponse>>();
+  private readonly wsState = new Map<WebSocket, WsClientState>();
+  private port = 0;
+  private storeUnsub: (() => void) | undefined;
+  private listening = false;
+  private readyResolve: (() => void) | undefined;
+  private readonly readyPromise: Promise<void>;
 
-  constructor(private context: vscode.ExtensionContext, port: number = 9090) {
-    // 根路径：返回所有图像键列表
-    this.app.get("/", (req, res) => {
-      res.setHeader("Content-Type", "application/json");
-      res.send(JSON.stringify(Array.from(this.imageMap.keys())));
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    store?: FrameStore
+  ) {
+    this.store = store ?? new FrameStore();
+    this.mountRoutes();
+    this.storeUnsub = this.store.subscribeAll((frame) => {
+      this.pushWsFrame(frame);
+      this.pushMjpegFrame(frame);
     });
-
-    // 单次图像获取接口
-    this.app.get("/image", (req, res) => {
-      res.send("Image Service API - use /image/:key to get specific image");
+    this.readyPromise = new Promise((resolve) => {
+      this.readyResolve = resolve;
     });
-
-    // 获取指定键的图像数据
-    this.app.get("/image/:key", (req, res) => {
-      const key = req.params.key;
-      const imageData = this.imageMap.get(key);
-      if (imageData) {
-        res.setHeader("Content-Type", "image/jpeg");
-        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        res.setHeader("Pragma", "no-cache");
-        res.setHeader("Expires", "0");
-        res.setHeader("X-Frame-Timestamp", imageData.timestamp.toString());
-        
-        // 添加图像元数据头
-        if (imageData.metadata) {
-          if (imageData.metadata.width) {res.setHeader("X-Image-Width", imageData.metadata.width.toString());}
-          if (imageData.metadata.height) {res.setHeader("X-Image-Height", imageData.metadata.height.toString());}
-          if (imageData.metadata.colorSpace) {res.setHeader("X-Image-ColorSpace", imageData.metadata.colorSpace);}
-          if (imageData.metadata.format) {res.setHeader("X-Image-Format", imageData.metadata.format);}
-        }
-        
-        res.end(Buffer.from(imageData.buffer));
-      } else {
-        log(`Image not found for key: ${key}`);
-        res.status(404).json({ error: "Image not found", key });
-      }
-    });
-
-    // 图像查看界面（包含HTTP和WebSocket测试）
-    this.app.get("/view/:key", (req, res) => {
-      const key = req.params.key;
-      res.setHeader("Content-Type", "text/html");
-      res.send(`
-        <!DOCTYPE html>
-        <html lang="zh-cn">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>图像流查看器 - ${key}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-            .container { max-width: 1200px; margin: 0 auto; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
-            .tab { padding: 10px 20px; cursor: pointer; border: none; background: none; }
-            .tab.active { background: #007acc; color: white; }
-            .content { display: none; }
-            .content.active { display: block; }
-            .image-container { text-align: center; margin-bottom: 20px; }
-            .image-container img { max-width: 100%; height: auto; border: 2px solid #ddd; background: #fff; }
-            .metrics { display: flex; justify-content: space-around; background: #fff; padding: 15px; border-radius: 8px; margin: 20px 0; }
-            .metric { text-align: center; }
-            .metric-value { font-size: 24px; font-weight: bold; color: #007acc; }
-            .metric-label { font-size: 12px; color: #666; }
-            .status { padding: 10px; border-radius: 4px; margin: 10px 0; }
-            .status.connected { background: #d4edda; color: #155724; }
-            .status.error { background: #f8d7da; color: #721c24; }
-            .controls { margin: 20px 0; }
-            .btn { padding: 8px 16px; margin: 0 5px; border: 1px solid #ddd; background: #fff; cursor: pointer; }
-            .btn:hover { background: #f0f0f0; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>图像流查看器</h1>
-              <p>设备: <strong>${key}</strong></p>
-            </div>
-            
-            <div class="tabs">
-              <button class="tab active" onclick="switchTab('http')">HTTP 流</button>
-              <button class="tab" onclick="switchTab('websocket')">WebSocket 流</button>
-              <button class="tab" onclick="switchTab('mjpeg')">MJPEG 流</button>
-            </div>
-
-            <div class="metrics">
-              <div class="metric">
-                <div class="metric-value" id="fps">0</div>
-                <div class="metric-label">FPS</div>
-              </div>
-              <div class="metric">
-                <div class="metric-value" id="frameSize">0</div>
-                <div class="metric-label">帧大小 (KB)</div>
-              </div>
-              <div class="metric">
-                <div class="metric-value" id="resolution">-</div>
-                <div class="metric-label">分辨率</div>
-              </div>
-              <div class="metric">
-                <div class="metric-value" id="colorSpace">-</div>
-                <div class="metric-label">色彩空间</div>
-              </div>
-            </div>
-
-            <div id="http-content" class="content active">
-              <div class="status" id="http-status">准备连接...</div>
-              <div class="image-container">
-                <img id="http-image" alt="HTTP 图像加载中..." style="max-width: 100%; height: auto;">
-              </div>
-              <div class="controls">
-                <button class="btn" onclick="startHttpStream()">开始</button>
-                <button class="btn" onclick="stopHttpStream()">停止</button>
-              </div>
-            </div>
-
-            <div id="websocket-content" class="content">
-              <div class="status" id="ws-status">准备连接...</div>
-              <div class="image-container">
-                <img id="ws-image" alt="WebSocket 图像加载中..." style="max-width: 100%; height: auto;">
-              </div>
-              <div class="controls">
-                <button class="btn" onclick="startWebSocketStream()">开始</button>
-                <button class="btn" onclick="stopWebSocketStream()">停止</button>
-              </div>
-            </div>
-
-            <div id="mjpeg-content" class="content">
-              <div class="status" id="mjpeg-status">准备连接...</div>
-              <div class="image-container">
-                <img id="mjpeg-image" src="/stream/${key}" alt="MJPEG 流加载中..." style="max-width: 100%; height: auto;">
-              </div>
-              <div class="controls">
-                <button class="btn" onclick="refreshMjpegStream()">刷新</button>
-              </div>
-            </div>
-          </div>
-
-          <script>
-            const key = "${key}";
-            let httpInterval = null;
-            let websocket = null;
-            let frameCount = 0;
-            let lastFrameTime = Date.now();
-            let currentTab = 'http';
-
-            function switchTab(tabName) {
-              // 停止当前流
-              stopAllStreams();
-              
-              // 切换标签
-              document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-              document.querySelectorAll('.content').forEach(content => content.classList.remove('active'));
-              
-              document.querySelector(\`[onclick="switchTab('\${tabName}')"]\`).classList.add('active');
-              document.getElementById(\`\${tabName}-content\`).classList.add('active');
-              
-              currentTab = tabName;
-              resetMetrics();
-            }
-
-            function stopAllStreams() {
-              if (httpInterval) {
-                clearInterval(httpInterval);
-                httpInterval = null;
-              }
-              if (websocket) {
-                websocket.close();
-                websocket = null;
-              }
-            }
-
-            function resetMetrics() {
-              document.getElementById('fps').textContent = '0';
-              document.getElementById('frameSize').textContent = '0';
-              document.getElementById('resolution').textContent = '-';
-              document.getElementById('colorSpace').textContent = '-';
-              frameCount = 0;
-              lastFrameTime = Date.now();
-            }
-
-            function updateFPS() {
-              frameCount++;
-              const now = Date.now();
-              if (now - lastFrameTime >= 1000) {
-                document.getElementById('fps').textContent = frameCount;
-                frameCount = 0;
-                lastFrameTime = now;
-              }
-            }
-
-            function updateImageMetadata(response) {
-              const frameSize = response.headers.get('content-length');
-              if (frameSize) {
-                document.getElementById('frameSize').textContent = Math.round(parseInt(frameSize) / 1024);
-              }
-              
-              const width = response.headers.get('X-Image-Width');
-              const height = response.headers.get('X-Image-Height');
-              if (width && height) {
-                document.getElementById('resolution').textContent = \`\${width}×\${height}\`;
-              }
-              
-              const colorSpace = response.headers.get('X-Image-ColorSpace');
-              if (colorSpace) {
-                document.getElementById('colorSpace').textContent = colorSpace;
-              }
-            }
-
-            function startHttpStream() {
-              stopHttpStream();
-              document.getElementById('http-status').textContent = 'HTTP 流已连接';
-              document.getElementById('http-status').className = 'status connected';
-              
-              async function fetchFrame() {
-                try {
-                  const response = await fetch(\`/image/\${key}?\${Date.now()}\`);
-                  if (!response.ok) throw new Error(\`HTTP \${response.status}\`);
-                  
-                  const blob = await response.blob();
-                  const url = URL.createObjectURL(blob);
-                  
-                  const img = document.getElementById('http-image');
-                  img.onload = () => {
-                    URL.revokeObjectURL(url);
-                    updateFPS();
-                  };
-                  img.src = url;
-                  
-                  updateImageMetadata(response);
-                } catch (error) {
-                  console.error('HTTP 流错误:', error);
-                  document.getElementById('http-status').textContent = \`HTTP 流错误: \${error.message}\`;
-                  document.getElementById('http-status').className = 'status error';
-                }
-              }
-              
-              httpInterval = setInterval(fetchFrame, 100);
-            }
-
-            function stopHttpStream() {
-              if (httpInterval) {
-                clearInterval(httpInterval);
-                httpInterval = null;
-                document.getElementById('http-status').textContent = 'HTTP 流已停止';
-                document.getElementById('http-status').className = 'status';
-              }
-            }
-
-            function startWebSocketStream() {
-              stopWebSocketStream();
-              
-              try {
-                websocket = new WebSocket('ws://localhost:9090');
-                
-                websocket.onopen = () => {
-                  document.getElementById('ws-status').textContent = 'WebSocket 已连接';
-                  document.getElementById('ws-status').className = 'status connected';
-                  websocket.send(key);
-                };
-                
-                websocket.onmessage = (event) => {
-                  if (event.data instanceof Blob) {
-                    const url = URL.createObjectURL(event.data);
-                    const img = document.getElementById('ws-image');
-                    img.onload = () => {
-                      URL.revokeObjectURL(url);
-                      updateFPS();
-                    };
-                    img.src = url;
-                    
-                    document.getElementById('frameSize').textContent = Math.round(event.data.size / 1024);
-                    
-                    // 继续请求下一帧
-                    if (websocket && websocket.readyState === WebSocket.OPEN) {
-                      setTimeout(() => websocket.send(key), 50);
-                    }
-                  }
-                };
-                
-                websocket.onerror = (error) => {
-                  console.error('WebSocket 错误:', error);
-                  document.getElementById('ws-status').textContent = 'WebSocket 连接错误';
-                  document.getElementById('ws-status').className = 'status error';
-                };
-                
-                websocket.onclose = () => {
-                  document.getElementById('ws-status').textContent = 'WebSocket 已断开';
-                  document.getElementById('ws-status').className = 'status';
-                  websocket = null;
-                };
-              } catch (error) {
-                console.error('WebSocket 启动失败:', error);
-                document.getElementById('ws-status').textContent = \`WebSocket 启动失败: \${error.message}\`;
-                document.getElementById('ws-status').className = 'status error';
-              }
-            }
-
-            function stopWebSocketStream() {
-              if (websocket) {
-                websocket.close();
-                websocket = null;
-                document.getElementById('ws-status').textContent = 'WebSocket 已停止';
-                document.getElementById('ws-status').className = 'status';
-              }
-            }
-
-            function refreshMjpegStream() {
-              const img = document.getElementById('mjpeg-image');
-              const src = img.src;
-              img.src = '';
-              setTimeout(() => {
-                img.src = src + '?t=' + Date.now();
-                document.getElementById('mjpeg-status').textContent = 'MJPEG 流已刷新';
-                document.getElementById('mjpeg-status').className = 'status connected';
-              }, 100);
-            }
-
-            // MJPEG 流监控
-            document.getElementById('mjpeg-image').onload = () => {
-              document.getElementById('mjpeg-status').textContent = 'MJPEG 流正常';
-              document.getElementById('mjpeg-status').className = 'status connected';
-              updateFPS();
-            };
-
-            document.getElementById('mjpeg-image').onerror = () => {
-              document.getElementById('mjpeg-status').textContent = 'MJPEG 流连接失败';
-              document.getElementById('mjpeg-status').className = 'status error';
-            };
-
-            // 默认启动 HTTP 流
-            startHttpStream();
-          </script>
-        </body>
-        </html>
-      `);
-    });
-
-    // MJPEG 流接口
-    this.app.get("/stream/:key", (req, res) => {
-      const key = req.params.key;
-      const imageData = this.imageMap.get(key);
-      if (!imageData) {
-        res.status(404).json({ error: "Image stream not found", key });
-        return;
-      }
-
-      res.setHeader("Content-Type", "multipart/x-mixed-replace; boundary=frame");
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-
-      // 将此响应添加到流客户端列表
-      if (!this.streamClients.has(key)) {
-        this.streamClients.set(key, new Set());
-      }
-      this.streamClients.get(key)!.add(res);
-
-      // 发送初始帧
-      this.sendMJPEGFrame(res, imageData);
-
-      req.on("close", () => {
-        const clients = this.streamClients.get(key);
-        if (clients) {
-          clients.delete(res);
-          if (clients.size === 0) {
-            this.streamClients.delete(key);
-          }
-        }
-        log(`MJPEG stream closed for key: ${key}`);
-      });
-
-      req.on("error", (error) => {
-        log(`MJPEG stream error for key: ${key}, error: ${error.message}`);
-        const clients = this.streamClients.get(key);
-        if (clients) {
-          clients.delete(res);
-        }
-      });
-    });
-
-    // 创建WebSocket服务器
-    this.wss = new WebSocketServer({ noServer: true });
-    this.wss.on("connection", (ws, request) => {
-      log("WebSocket connection established");
-      
-      ws.on("message", (message) => {
-        const key = message.toString();
-        const imageData = this.imageMap.get(key);
-        if (imageData) {
-          try {
-            // 发送图像数据和时间戳
-            const timestampBuffer = Buffer.from(imageData.timestamp.toString());
-            const imageBuffer = Buffer.from(imageData.buffer);
-            const combined = Buffer.concat([imageBuffer, Buffer.from('\n---TIMESTAMP---\n'), timestampBuffer]);
-            
-            if (ws.readyState === ws.OPEN) {
-              ws.send(imageBuffer); // 只发送图像数据，时间戳放在HTTP头中更合适
-            }
-          } catch (error) {
-            log(`Error sending WebSocket message: ${error}`);
-          }
-        } else {
-          log(`WebSocket requested image not found: ${key}`);
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ error: "Image not found", key }));
-          }
-        }
-      });
-
-      ws.on("error", (error) => {
-        log(`WebSocket error: ${error.message}`);
-      });
-
-      ws.on("close", () => {
-        log("WebSocket connection closed");
-      });
-    });
-
-    // 创建HTTP服务器
-    this.server = this.app.listen(port, () => {
-      log(`Image service is running on port ${port}`);
-      log(`- HTTP API: http://localhost:${port}`);
-      log(`- WebSocket: ws://localhost:${port}`);
-      log(`- View interface: http://localhost:${port}/view/:key`);
-    });
-
-    // 处理WebSocket升级请求
-    this.server.on("upgrade", (request, socket, head) => {
-      this.wss.handleUpgrade(request, socket, head, (ws) => {
-        this.wss.emit("connection", ws, request);
-      });
+    void this.startServer();
+    context.subscriptions.push({
+      dispose: () => this.dispose(),
     });
   }
 
-  private sendMJPEGFrame(res: http.ServerResponse, imageData: ImageData): void {
-    try {
-      if (!res.destroyed) {
-        res.write(`--frame\r\n`);
-        res.write(`Content-Type: image/jpeg\r\n`);
-        res.write(`Content-Length: ${imageData.buffer.byteLength}\r\n`);
-        res.write(`X-Frame-Timestamp: ${imageData.timestamp}\r\n`);
-        
-        if (imageData.metadata) {
-          if (imageData.metadata.width) {res.write(`X-Image-Width: ${imageData.metadata.width}\r\n`);}
-          if (imageData.metadata.height) {res.write(`X-Image-Height: ${imageData.metadata.height}\r\n`);}
-          if (imageData.metadata.colorSpace) {res.write(`X-Image-ColorSpace: ${imageData.metadata.colorSpace}\r\n`);}
-          if (imageData.metadata.format) {res.write(`X-Image-Format: ${imageData.metadata.format}\r\n`);}
-        }
-        
-        res.write(`\r\n`);
-        res.write(Buffer.from(imageData.buffer));
-        res.write(`\r\n`);
-      }
-    } catch (error) {
-      log(`Error sending MJPEG frame: ${error}`);
-    }
+  /** Resolves when the local HTTP/WS server is listening (or failed). */
+  public whenReady(): Promise<void> {
+    return this.readyPromise;
   }
 
-  public setImage(key: string, imageData: ArrayBuffer, metadata?: {
-    width?: number;
-    height?: number;
-    colorSpace?: string;
-    format?: string;
-  }): void {
-    const data: ImageData = {
-      buffer: imageData,
-      timestamp: Date.now(),
-      metadata
-    };
-    
-    if (this.imageMap.get(key)?.buffer === imageData) {
-      // log(`Image for key ${key} is unchanged, skipping update.`);
-      return;
-    }
-    // this.imageMap.set(key, data);
+  public getPort(): number {
+    return this.port;
+  }
 
-    // 通知所有WebSocket客户端
-    this.wss.clients.forEach((client) => {
-      if (client.readyState === client.OPEN) {
-        try {
-          client.send(Buffer.from(imageData));
-        } catch (error) {
-          log(`Error broadcasting to WebSocket client: ${error}`);
-        }
-      }
-    });
+  public getHttpBaseUrl(): string {
+    return `http://127.0.0.1:${this.port}`;
+  }
 
-    // 更新所有MJPEG流客户端
-    const streamClients = this.streamClients.get(key);
-    if (streamClients && streamClients.size > 0) {
-      streamClients.forEach((res) => {
+  public getWsUrl(): string {
+    return `ws://127.0.0.1:${this.port}`;
+  }
+
+  public setImage(
+    key: string,
+    imageData: ArrayBuffer,
+    metadata?: FrameMetadata
+  ): void {
+    this.store.setImage(key, imageData, metadata);
+  }
+
+  public clearKey(key: string): void {
+    this.store.clearKey(key);
+    const clients = this.streamClients.get(key);
+    if (clients) {
+      for (const res of clients) {
         try {
           if (!res.destroyed) {
-            this.sendMJPEGFrame(res, data);
+            res.end();
           }
-        } catch (error) {
-          log(`Error updating MJPEG stream: ${error}`);
-          streamClients.delete(res);
+        } catch {
+          // ignore
         }
-      });
+      }
+      this.streamClients.delete(key);
     }
-  }
-
-  public getImageKeys(): string[] {
-    return Array.from(this.imageMap.keys());
-  }
-
-  public hasImage(key: string): boolean {
-    return this.imageMap.has(key);
-  }
-
-  public getImageMetadata(key: string): ImageData["metadata"] | undefined {
-    return this.imageMap.get(key)?.metadata;
+    for (const [ws, state] of this.wsState) {
+      if (state.key === key && ws.readyState === WebSocket.OPEN) {
+        this.sendJson(ws, { op: "error", error: "key_cleared", key });
+      }
+    }
   }
 
   public dispose(): void {
-    // 清理所有流客户端
-    this.streamClients.forEach((clients, key) => {
+    this.storeUnsub?.();
+    this.storeUnsub = undefined;
+
+    this.streamClients.forEach((clients) => {
       clients.forEach((res) => {
         try {
           if (!res.destroyed) {
             res.end();
           }
-        } catch (error) {
-          log(`Error closing stream client: ${error}`);
+        } catch {
+          // ignore
         }
       });
     });
     this.streamClients.clear();
 
-    // 关闭WebSocket服务器
-    this.wss.clients.forEach((client) => {
-      client.close();
-    });
-    this.wss.close();
+    if (this.wss) {
+      for (const client of this.wss.clients) {
+        client.close();
+      }
+      this.wss.close();
+      this.wss = undefined;
+    }
+    this.wsState.clear();
 
-    // 关闭HTTP服务器
     if (this.server) {
       this.server.close();
+      this.server = undefined;
     }
-
+    this.listening = false;
     log("Image service disposed");
+  }
+
+  private preferredPort(): number {
+    const cfg = vscode.workspace.getConfiguration(ConfigSection);
+    const p = cfg.get<number>(ConfigKeys.imageServicePort, 9090);
+    return typeof p === "number" && p >= 0 && p < 65536 ? p : 9090;
+  }
+
+  private async startServer(): Promise<void> {
+    const preferred = this.preferredPort();
+    const candidates =
+      preferred === 0
+        ? [0]
+        : [preferred, 0];
+
+    for (const tryPort of candidates) {
+      try {
+        await this.listen(tryPort);
+        return;
+      } catch (e) {
+        warn(
+          `Image service bind port ${tryPort} failed: ${
+            e instanceof Error ? e.message : String(e)
+          }`
+        );
+      }
+    }
+    warn("Image service failed to start on any port");
+    this.readyResolve?.();
+    this.readyResolve = undefined;
+  }
+
+  private listen(port: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const server = http.createServer(this.app);
+      const wss = new WebSocketServer({ noServer: true });
+      this.attachWs(wss);
+
+      server.on("upgrade", (request, socket, head) => {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit("connection", ws, request);
+        });
+      });
+
+      const onError = (err: Error) => {
+        server.off("error", onError);
+        try {
+          server.close();
+        } catch {
+          // ignore
+        }
+        reject(err);
+      };
+      server.once("error", onError);
+
+      server.listen(port, "127.0.0.1", () => {
+        server.off("error", onError);
+        const addr = server.address();
+        this.port =
+          typeof addr === "object" && addr ? addr.port : port;
+        this.server = server;
+        this.wss = wss;
+        this.listening = true;
+        log(`Image service listening on ${this.getHttpBaseUrl()}`);
+        log(`- HTTP:  GET /image/:key  GET /stream/:key  GET /keys`);
+        log(`- WS:    ${this.getWsUrl()}`);
+        this.readyResolve?.();
+        this.readyResolve = undefined;
+        resolve();
+      });
+    });
+  }
+
+  private cors(res: express.Response): void {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Expose-Headers", EXPOSE_HEADERS);
+  }
+
+  private setImageHeaders(res: express.Response, frame: Frame): void {
+    this.cors(res);
+    res.setHeader("Content-Type", frame.mime);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("X-Frame-Timestamp", frame.timestamp.toString());
+    res.setHeader("ETag", `"${frame.timestamp}"`);
+    if (frame.metadata?.width) {
+      res.setHeader("X-Image-Width", frame.metadata.width.toString());
+    }
+    if (frame.metadata?.height) {
+      res.setHeader("X-Image-Height", frame.metadata.height.toString());
+    }
+    if (frame.metadata?.colorSpace) {
+      res.setHeader("X-Image-ColorSpace", frame.metadata.colorSpace);
+    }
+    if (frame.metadata?.format) {
+      res.setHeader("X-Image-Format", frame.metadata.format);
+    }
+  }
+
+  private mountRoutes(): void {
+    this.app.use((_req, res, next) => {
+      this.cors(res);
+      if (_req.method === "OPTIONS") {
+        res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+        res.setHeader(
+          "Access-Control-Allow-Headers",
+          "If-None-Match, Content-Type"
+        );
+        res.status(204).end();
+        return;
+      }
+      next();
+    });
+
+    this.app.get("/", (_req, res) => {
+      res.json({
+        service: "maixcode-image",
+        port: this.port,
+        keys: this.store.keys(),
+        endpoints: {
+          keys: "/keys",
+          image: "/image/:key",
+          stream: "/stream/:key",
+          ws: this.getWsUrl(),
+        },
+      });
+    });
+
+    this.app.get("/keys", (_req, res) => {
+      res.json(this.store.keys());
+    });
+
+    this.app.get("/image", (_req, res) => {
+      res
+        .status(400)
+        .json({ error: "missing_key", hint: "GET /image/:key" });
+    });
+
+    this.app.head("/image/:key", (req, res) => {
+      const key = decodeURIComponent(req.params.key);
+      const frame = this.store.getFrame(key);
+      if (!frame) {
+        res.status(404).end();
+        return;
+      }
+      this.setImageHeaders(res, frame);
+      res.setHeader("Content-Length", frame.buffer.byteLength);
+      res.status(200).end();
+    });
+
+    this.app.get("/image/:key", (req, res) => {
+      const key = decodeURIComponent(req.params.key);
+      const frame = this.store.getFrame(key);
+      if (!frame) {
+        this.cors(res);
+        res.status(404).json({ error: "not_found", key });
+        return;
+      }
+
+      const inm = req.headers["if-none-match"];
+      if (inm && inm === `"${frame.timestamp}"`) {
+        this.cors(res);
+        res.status(304).end();
+        return;
+      }
+
+      this.setImageHeaders(res, frame);
+      res.status(200).end(Buffer.from(frame.buffer));
+    });
+
+    this.app.get("/stream/:key", (req, res) => {
+      const key = decodeURIComponent(req.params.key);
+      this.cors(res);
+      res.setHeader(
+        "Content-Type",
+        "multipart/x-mixed-replace; boundary=frame"
+      );
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.status(200);
+      // flush headers
+      res.write("");
+
+      if (!this.streamClients.has(key)) {
+        this.streamClients.set(key, new Set());
+      }
+      this.streamClients.get(key)!.add(res);
+
+      const existing = this.store.getFrame(key);
+      if (existing) {
+        this.sendMjpegPart(res, existing);
+      }
+
+      const cleanup = () => {
+        const set = this.streamClients.get(key);
+        if (set) {
+          set.delete(res);
+          if (set.size === 0) {
+            this.streamClients.delete(key);
+          }
+        }
+      };
+      req.on("close", cleanup);
+      req.on("error", cleanup);
+    });
+  }
+
+  private sendMjpegPart(res: http.ServerResponse, frame: Frame): boolean {
+    if (res.destroyed || res.writableEnded) {
+      return false;
+    }
+    try {
+      const body = Buffer.from(frame.buffer);
+      const headerLines = [
+        "--frame",
+        `Content-Type: ${frame.mime}`,
+        `Content-Length: ${body.byteLength}`,
+        `X-Frame-Timestamp: ${frame.timestamp}`,
+      ];
+      if (frame.metadata?.width) {
+        headerLines.push(`X-Image-Width: ${frame.metadata.width}`);
+      }
+      if (frame.metadata?.height) {
+        headerLines.push(`X-Image-Height: ${frame.metadata.height}`);
+      }
+      if (frame.metadata?.colorSpace) {
+        headerLines.push(`X-Image-ColorSpace: ${frame.metadata.colorSpace}`);
+      }
+      if (frame.metadata?.format) {
+        headerLines.push(`X-Image-Format: ${frame.metadata.format}`);
+      }
+      headerLines.push("", "");
+      const ok = res.write(headerLines.join("\r\n"));
+      res.write(body);
+      res.write("\r\n");
+      return ok !== false;
+    } catch (e) {
+      log(`MJPEG write error: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+  }
+
+  private pushMjpegFrame(frame: Frame): void {
+    const clients = this.streamClients.get(frame.key);
+    if (!clients || clients.size === 0) {
+      return;
+    }
+    for (const res of [...clients]) {
+      if (res.destroyed || res.writableEnded) {
+        clients.delete(res);
+        continue;
+      }
+      // backpressure: skip if socket buffer is large
+      const sock = res.socket;
+      if (sock && sock.writableLength > WS_BUFFERED_LIMIT) {
+        continue;
+      }
+      if (!this.sendMjpegPart(res, frame)) {
+        clients.delete(res);
+        try {
+          res.end();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (clients.size === 0) {
+      this.streamClients.delete(frame.key);
+    }
+  }
+
+  private attachWs(wss: WebSocketServer): void {
+    wss.on("connection", (ws) => {
+      this.wsState.set(ws, { mode: "push" });
+      this.sendJson(ws, { op: "hello", service: "maixcode-image" });
+
+      ws.on("message", (raw, isBinary) => {
+        if (isBinary) {
+          return;
+        }
+        const text = raw.toString();
+        let msg: { op?: string; key?: string; mode?: string };
+        try {
+          msg = JSON.parse(text) as { op?: string; key?: string; mode?: string };
+        } catch {
+          // legacy: plain key string => subscribe + one pull
+          const key = text.trim();
+          if (key) {
+            this.wsSubscribe(ws, key, "pull");
+            this.wsSendLatest(ws, key);
+          }
+          return;
+        }
+
+        const state = this.wsState.get(ws) ?? { mode: "push" as const };
+        switch (msg.op) {
+          case "subscribe": {
+            if (!msg.key) {
+              this.sendJson(ws, { op: "error", error: "missing_key" });
+              break;
+            }
+            const mode = msg.mode === "pull" ? "pull" : "push";
+            this.wsSubscribe(ws, msg.key, mode);
+            this.sendJson(ws, {
+              op: "ack",
+              action: "subscribe",
+              key: msg.key,
+              mode,
+            });
+            if (mode === "push") {
+              this.wsSendLatest(ws, msg.key);
+            }
+            break;
+          }
+          case "unsubscribe": {
+            state.key = undefined;
+            this.wsState.set(ws, state);
+            this.sendJson(ws, { op: "ack", action: "unsubscribe" });
+            break;
+          }
+          case "pull": {
+            const key = msg.key || state.key;
+            if (!key) {
+              this.sendJson(ws, { op: "error", error: "missing_key" });
+              break;
+            }
+            this.wsSendLatest(ws, key);
+            break;
+          }
+          case "ping": {
+            this.sendJson(ws, { op: "pong", t: Date.now() });
+            break;
+          }
+          default:
+            this.sendJson(ws, { op: "error", error: "unknown_op", detail: msg.op });
+        }
+      });
+
+      ws.on("close", () => {
+        this.wsState.delete(ws);
+      });
+      ws.on("error", (err) => {
+        log(`Image WS client error: ${err.message}`);
+        this.wsState.delete(ws);
+      });
+    });
+  }
+
+  private wsSubscribe(
+    ws: WebSocket,
+    key: string,
+    mode: "push" | "pull"
+  ): void {
+    this.wsState.set(ws, { key, mode });
+  }
+
+  private wsSendLatest(ws: WebSocket, key: string): void {
+    const frame = this.store.getFrame(key);
+    if (!frame) {
+      this.sendJson(ws, { op: "error", error: "not_found", key });
+      return;
+    }
+    this.sendWsFrame(ws, frame);
+  }
+
+  private pushWsFrame(frame: Frame): void {
+    for (const [ws, state] of this.wsState) {
+      if (state.key !== frame.key || state.mode !== "push") {
+        continue;
+      }
+      if (ws.readyState !== WebSocket.OPEN) {
+        continue;
+      }
+      if (ws.bufferedAmount > WS_BUFFERED_LIMIT) {
+        continue;
+      }
+      this.sendWsFrame(ws, frame);
+    }
+  }
+
+  private sendWsFrame(ws: WebSocket, frame: Frame): void {
+    if (ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    try {
+      this.sendJson(ws, {
+        op: "frame",
+        key: frame.key,
+        ts: frame.timestamp,
+        mime: frame.mime,
+        size: frame.buffer.byteLength,
+        width: frame.metadata?.width,
+        height: frame.metadata?.height,
+        colorSpace: frame.metadata?.colorSpace,
+        format: frame.metadata?.format,
+      });
+      ws.send(Buffer.from(frame.buffer));
+    } catch (e) {
+      log(`WS send error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  private sendJson(ws: WebSocket, obj: Record<string, unknown>): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(obj));
+    }
   }
 }

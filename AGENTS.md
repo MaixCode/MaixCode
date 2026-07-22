@@ -52,7 +52,13 @@ Webpack: single Node target bundle `src/extension.ts` → `dist/extension.js`; `
 - **Activation**: `"activationEvents": ["*"]` — loads early; discovery starts in `activate`.
 - **Discovery**: mDNS over each non-internal IPv4 NIC; PTR `_ssh._tcp.local` with name prefix `maixcam`, then A records. Loop ~3s; stale drop ~4s.
 - **Device control**: WebSocket `ws://<ip>:7899`, binary framing (magic + version + command IDs in `websocket_service.ts`). Auth string `"maixvision"`.
-- **Images**: frames via WS; local Express image service + webview (`image_service` / `image_viewer`). Viewer defaults include `http://localhost:9090`.
+- **Images**: device frames → `FrameStore` (`frame_store.ts`) via `FrameSink.setImage`; key = device **name** (fallback ip), same as `DeviceService` `onFrame`.
+- **ImageService** (`image_service.ts`): local HTTP on `127.0.0.1` (port `maixcode.imageServicePort`, default 9090, fallback ephemeral). Shared store + three transports:
+  - HTTP pull: `GET/HEAD /image/:key` (ETag/304, `X-Frame-*` / `X-Image-*` headers; CORS expose)
+  - WebSocket: JSON control `subscribe`/`pull`/`ping` + binary frame after `op:frame` meta; push per subscribed key; legacy plain-key message = subscribe pull once
+  - MJPEG: `GET /stream/:key` multipart; wait for first frame; backpressure skip
+  - Also `GET /keys`, `GET /`. No product HTML under `/view`.
+- **ImageViewer** (`ui/provider/image_viewer.ts` + `media/image_viewer/*`): webview panel; no `Instance` import; deps inject listConnected + imageService. Modes HTTP / WebSocket / MJPEG. Config: `imageViewerDefaultMode`, `imageHttpIntervalMs`, `imageViewerAutoStart`. Screenshot via Save dialog (canvas dataUrl or store buffer).
 - **Debug type** `maixpy`: registered as **inline** `DebugAdapterDescriptorFactory` in `debugger/debugger.ts`. Do **not** reintroduce stale `contributes.debuggers.program` / `"runtime": "python"` — the adapter is TypeScript, not an external Python program.
 - **Run / debug source resolve**: `debugger/source_resolve.ts` maps active editor (including `example://` and untitled) to content/path for launch. Prefer this over assuming `document.uri.fsPath` always works.
 - **Stop / busy**: stop should end the debug session (`TerminatedEvent` path). Re-run while code is already running should stop-then-retry rather than silently fail.

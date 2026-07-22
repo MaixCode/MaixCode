@@ -212,6 +212,36 @@
           "default": "",
           "description": "Preferred device for auto-connect: device hostname (e.g. maixcam-xxxx.local) or IP. Empty = last connected device, then first discovered."
         },
+        "maixcode.imageServicePort": {
+          "type": "number",
+          "default": 9090,
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Local image service port (HTTP / WebSocket / MJPEG). 0 = ephemeral. If bind fails, falls back to ephemeral."
+        },
+        "maixcode.imageViewerDefaultMode": {
+          "type": "string",
+          "default": "websocket",
+          "enum": ["http", "websocket", "mjpeg"],
+          "enumDescriptions": [
+            "Poll GET /image/:key",
+            "WebSocket subscribe push",
+            "MJPEG multipart stream"
+          ],
+          "description": "Default transport in the Image Preview panel"
+        },
+        "maixcode.imageHttpIntervalMs": {
+          "type": "number",
+          "default": 33,
+          "minimum": 16,
+          "maximum": 2000,
+          "description": "Default HTTP poll interval (ms) in Image Preview (~30fps at 33)"
+        },
+        "maixcode.imageViewerAutoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-start stream when Image Preview opens with a connected device"
+        },
         "maixcode.exampleSources": {
           "type": "array",
           "default": [

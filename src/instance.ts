@@ -26,6 +26,8 @@ export class Instance {
   public onStatusChange: (status: Status) => void = () => {};
   private status: Status = Status.offline;
 
+  private connectionListeners = new Set<() => void>();
+
   private constructor(context: vscode.ExtensionContext) {
     this.imageService = new ImageService(context);
     this.discoveryService = new DiscoveryService(context);
@@ -41,6 +43,26 @@ export class Instance {
       onConnectionListChanged: () => {
         this.sidebar.refresh();
         this.statusbar.updateByStatus(this.deviceManager.getStatus());
+        // drop frames for keys no longer connected
+        const live = new Set(
+          this.deviceManager.getConnectedDevice().map((d) => {
+            const name = d.device?.name;
+            const ip = d.device?.ip;
+            return name || ip || "Undefined";
+          })
+        );
+        for (const key of this.imageService.store.keys()) {
+          if (!live.has(key)) {
+            this.imageService.clearKey(key);
+          }
+        }
+        for (const listener of this.connectionListeners) {
+          try {
+            listener();
+          } catch {
+            // ignore
+          }
+        }
       },
     });
 
@@ -49,7 +71,21 @@ export class Instance {
       this.deviceManager.tryAutoConnect(devices);
     };
 
-    this.imageViewer = new ImageViewer(context, this.imageService);
+    this.imageViewer = new ImageViewer(context, {
+      imageService: this.imageService,
+      listConnectedDevices: () =>
+        this.deviceManager.getConnectedDevice().map((d) => ({
+          key: d.device?.name || d.device?.ip || "Undefined",
+          name: d.device?.name || "Unknown",
+          ip: d.device?.ip || "",
+        })),
+      onConnectionListChanged: (listener) => {
+        this.connectionListeners.add(listener);
+        return () => {
+          this.connectionListeners.delete(listener);
+        };
+      },
+    });
 
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
