@@ -56,17 +56,28 @@ body {
   color: var(--vscode-button-foreground, #fff);
 }
 .stream-mode:hover:not(.active) { background: #3a3a3a; }
-.status {
-  padding: 2px 8px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
+.status-light {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  background: #6b6b6b;
 }
-.status.idle { background: #2d2d30; color: #8b8b8b; }
-.status.connecting { background: #3d3a1a; color: #dcdcaa; }
-.status.connected { background: #0e4429; color: #3fb950; }
-.status.error { background: #4b1010; color: #f85149; }
+.status-light.idle { background: #6b6b6b; box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
+.status-light.connecting {
+  background: #dcdcaa;
+  box-shadow: 0 0 6px rgba(220, 220, 170, 0.55);
+}
+.status-light.connected {
+  background: #3fb950;
+  box-shadow: 0 0 6px rgba(63, 185, 80, 0.55);
+}
+.status-light.error {
+  background: #f85149;
+  box-shadow: 0 0 6px rgba(248, 81, 73, 0.5);
+}
 .btn {
   padding: 3px 10px;
   height: 24px;

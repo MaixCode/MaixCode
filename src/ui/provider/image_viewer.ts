@@ -382,7 +382,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     <button type="button" class="btn icon-btn" id="fitViewBtn" title="${tFit}" aria-label="${tFit}">${iconFit}</button>
     <button type="button" class="btn icon-btn" id="logBtn" title="${tLog}" aria-label="${tLog}">${iconLog}</button>
     <button type="button" class="btn icon-btn" id="settingsBtn" title="${tSettings}" aria-label="${tSettings}">${iconGear}</button>
-    <div class="status idle" id="connectionStatus">${tIdle}</div>
+    <span class="status-light idle" id="connectionStatus" title="${tIdle}" aria-label="${tIdle}" role="status"></span>
   </div>
   <div class="settings-panel" id="settingsPanel" hidden>
     <div class="settings-head">

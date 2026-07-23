@@ -181,8 +181,14 @@
   }
 
   function updateStatus(message, type) {
-    connectionStatus.textContent = message;
-    connectionStatus.className = 'status ' + (type || 'idle');
+    if (!connectionStatus) {
+      return;
+    }
+    const kind = type || 'idle';
+    connectionStatus.className = 'status-light ' + kind;
+    const tip = message || kind;
+    connectionStatus.title = tip;
+    connectionStatus.setAttribute('aria-label', tip);
   }
 
   /** Keep at least minKeep px of the image inside the stage (never fully out of view). */
