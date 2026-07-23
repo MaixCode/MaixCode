@@ -66,6 +66,12 @@
         "category": "MaixCode"
       },
       {
+        "command": "maixcode.openDeviceTerminal",
+        "title": "Open SSH Terminal",
+        "icon": "$(terminal)",
+        "category": "MaixCode"
+      },
+      {
         "command": "maixcode.discoverDevice",
         "title": "Discover Devices",
         "category": "MaixCode"
@@ -128,6 +134,11 @@
           "command": "maixcode.connectDevice",
           "when": "viewItem == maixcode-deviceIp",
           "group": "inline"
+        },
+        {
+          "command": "maixcode.openDeviceTerminal",
+          "when": "viewItem == maixcode-deviceIp",
+          "group": "inline@2"
         },
         {
           "command": "maixcode.refreshExampleSource",
@@ -323,6 +334,47 @@
           "type": "string",
           "default": "",
           "description": "Optional GitHub token for private example repos (maixcode.exampleSources type github_repo)."
+        },
+        "maixcode.sshPort": {
+          "type": "number",
+          "default": 22,
+          "description": "Default SSH port for device terminals"
+        },
+        "maixcode.sshConnectTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "description": "SSH connect timeout (ms) per credential attempt"
+        },
+        "maixcode.sshCredentials": {
+          "type": "array",
+          "default": [
+            {
+              "username": "root",
+              "password": "root"
+            }
+          ],
+          "description": "SSH credentials tried in order until one succeeds (username/password). Passwords are stored in settings in plain text.",
+          "items": {
+            "type": "object",
+            "required": [
+              "username"
+            ],
+            "properties": {
+              "username": {
+                "type": "string",
+                "description": "SSH username"
+              },
+              "password": {
+                "type": "string",
+                "default": "",
+                "description": "SSH password"
+              },
+              "label": {
+                "type": "string",
+                "description": "Optional label for logs only"
+              }
+            }
+          }
         }
       }
     }
@@ -344,6 +396,7 @@
     "@types/mocha": "^10.0.7",
     "@types/multicast-dns": "^7.2.4",
     "@types/node": "20.x",
+    "@types/ssh2": "^1.15.5",
     "@types/vscode": "^1.92.0",
     "@types/ws": "^8.5.12",
     "@types/yamljs": "^0.2.34",
@@ -351,12 +404,12 @@
     "@typescript-eslint/parser": "^7.11.0",
     "@vscode/test-cli": "^0.0.9",
     "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^3.6.0",
     "eslint": "^8.57.0",
     "ts-loader": "^9.5.1",
     "typescript": "^5.4.5",
     "webpack": "^5.92.1",
-    "webpack-cli": "^5.1.4",
-    "@vscode/vsce": "^3.6.0"
+    "webpack-cli": "^5.1.4"
   },
   "dependencies": {
     "@octokit/rest": "^21.0.1",
@@ -370,6 +423,7 @@
     "jszip": "^3.10.1",
     "multicast-dns": "^7.2.5",
     "sharp": "^0.33.5",
+    "ssh2": "^1.17.0",
     "ws": "^8.18.0",
     "yamljs": "^0.3.0"
   }

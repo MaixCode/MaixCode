@@ -7,6 +7,9 @@ export namespace Commands {
   export const discoverDevice = "maixcode.discoverDevice";
   export const refreshDeviceData = "maixcode.refreshDeviceData";
 
+  /** Open interactive SSH terminal to device (ssh2 + Pseudoterminal) */
+  export const openDeviceTerminal = "maixcode.openDeviceTerminal";
+
   // Image Viewer Commands
   export const openImageViewer = "maixcode.openImageViewer";
 
@@ -36,6 +39,9 @@ export namespace ConfigKeys {
   export const imageViewerDefaultMode = "imageViewerDefaultMode";
   export const imageHttpIntervalMs = "imageHttpIntervalMs";
   export const imageViewerAutoStart = "imageViewerAutoStart";
+  export const sshPort = "sshPort";
+  export const sshConnectTimeoutMs = "sshConnectTimeoutMs";
+  export const sshCredentials = "sshCredentials";
 }
 
 /** globalState key: last successfully connected device { name, ip } */

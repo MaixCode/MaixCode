@@ -47,6 +47,7 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
     } else if (element instanceof DeviceInfoGroupItem) {
       return Promise.resolve([
         ...this.getInfoItems(),
+        ...this.getOpenTerminalItems(),
         new DeviceDisconnectItem(),
       ]);
     }
@@ -87,6 +88,19 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
           new DeviceInfoItem(`SysVer: ${info.sysVer}`),
           new DeviceInfoItem(`MaixPyVer: ${info.maixpyVer}`),
           new DeviceInfoItem(`ApiKey: ${info.apiKey}`),
+        ];
+      }
+    }
+    return [];
+  }
+
+  private getOpenTerminalItems(): DeviceOpenTerminalItem[] {
+    const deviceList = Instance.instance.deviceManager.getConnectedDevice();
+    for (const device of deviceList) {
+      const ip = device.device?.ip;
+      if (ip) {
+        return [
+          new DeviceOpenTerminalItem(ip, device.device?.name || ""),
         ];
       }
     }
@@ -152,6 +166,21 @@ export class DeviceManualConnectItem extends TreeItem {
     command: Commands.connectDevice,
     title: "Connect",
   };
+}
+
+export class DeviceOpenTerminalItem extends TreeItem {
+  constructor(public ip: string, public name: string) {
+    super("Open SSH Terminal");
+    this.command = {
+      command: Commands.openDeviceTerminal,
+      title: "Open SSH Terminal",
+      arguments: [{ ip, name }],
+    };
+  }
+
+  contextValue = "maixcode-deviceOpenTerminal";
+
+  iconPath = new vscode.ThemeIcon("terminal");
 }
 
 export class DeviceDisconnectItem extends TreeItem {
