@@ -19,6 +19,14 @@ export class SftpSession {
   private sftp: SFTPWrapper | undefined;
   private disposed = false;
   private connectPromise: Promise<void> | undefined;
+  /** path -> realpath (symlink resolution) */
+  private realpathCache = new Map<string, string>();
+  /** path -> followed stats snapshot for a short TTL */
+  private statCache = new Map<
+    string,
+    { at: number; stats: Stats; isLink: boolean }
+  >();
+  private static readonly STAT_CACHE_MS = 3000;
 
   get isConnected(): boolean {
     return !!this.sftp && !this.disposed;
@@ -78,19 +86,25 @@ export class SftpSession {
     throw lastAuthError ?? new Error("No SSH credentials succeeded");
   }
 
-  realpath(remotePath: string): Promise<string> {
-    return this.withSftp(
+  async realpath(remotePath: string): Promise<string> {
+    const hit = this.realpathCache.get(remotePath);
+    if (hit) {
+      return hit;
+    }
+    const abs = await this.withSftp(
       (sftp) =>
-        new Promise((resolve, reject) => {
-          sftp.realpath(remotePath, (err, abs) => {
+        new Promise<string>((resolve, reject) => {
+          sftp.realpath(remotePath, (err, p) => {
             if (err) {
               reject(err);
               return;
             }
-            resolve(abs || remotePath);
+            resolve(p || remotePath);
           });
         })
     );
+    this.realpathCache.set(remotePath, abs);
+    return abs;
   }
 
   /** Follow symlinks (may fail with SSH_FX_FAILURE on broken/odd links). */
@@ -141,87 +155,131 @@ export class SftpSession {
   }
 
   /**
-   * Prefer stat (follow); on generic Failure fall back to lstat so broken or
-   * device-odd symlinks still appear in Explorer.
+   * Fast path: one followed stat() (1 RTT). Only on failure fall back to lstat.
+   * Avoids lstat+readlink+stat chain on every open (was 3–5 RTT per path).
    */
   async statPreferFollow(remotePath: string): Promise<{
     stats: Stats;
     followed: boolean;
     linkTarget?: string;
-    /** True when path is a symlink (even if target was also stat'd). */
     isLink: boolean;
   }> {
+    const cached = this.statCache.get(remotePath);
+    if (
+      cached &&
+      Date.now() - cached.at < SftpSession.STAT_CACHE_MS
+    ) {
+      return {
+        stats: cached.stats,
+        followed: true,
+        isLink: cached.isLink,
+      };
+    }
+
+    try {
+      const stats = await this.stat(remotePath);
+      // Do not spend extra RTT to detect isLink for normal files.
+      // Symlink dirs still get Directory type via followed stat.
+      this.statCache.set(remotePath, {
+        at: Date.now(),
+        stats,
+        isLink: false,
+      });
+      return { stats, followed: true, isLink: false };
+    } catch {
+      // fall through
+    }
+
     try {
       const lst = await this.lstat(remotePath);
       if (!lst.isSymbolicLink()) {
-        return { stats: lst, followed: true, isLink: false };
+        this.statCache.set(remotePath, {
+          at: Date.now(),
+          stats: lst,
+          isLink: false,
+        });
+        return { stats: lst, followed: false, isLink: false };
       }
-      let linkTarget: string | undefined;
+      // Broken / Failure on follow: try realpath once then stat target
       try {
-        linkTarget = await this.readlink(remotePath);
-      } catch {
-        // ignore
-      }
-      // Follow for target type (directory vs file)
-      try {
-        const stats = await this.stat(remotePath);
+        const abs = await this.realpath(remotePath);
+        const stats = await this.stat(abs);
+        this.statCache.set(remotePath, {
+          at: Date.now(),
+          stats,
+          isLink: true,
+        });
         return {
           stats,
           followed: true,
-          linkTarget,
+          linkTarget: abs,
           isLink: true,
         };
       } catch {
-        // Broken or server Failure on follow: keep lstat, try realpath+stat
-        try {
-          const abs = await this.realpath(remotePath);
-          const stats = await this.stat(abs);
-          return {
-            stats,
-            followed: true,
-            linkTarget: linkTarget || abs,
-            isLink: true,
-          };
-        } catch {
-          return {
-            stats: lst,
-            followed: false,
-            linkTarget,
-            isLink: true,
-          };
-        }
+        return {
+          stats: lst,
+          followed: false,
+          isLink: true,
+        };
       }
-    } catch {
-      // lstat failed: last resort plain stat
-      const stats = await this.stat(remotePath);
-      return { stats, followed: true, isLink: false };
+    } catch (e) {
+      throw e;
     }
   }
 
   /**
-   * Resolve path for directory listing / open. Symlink dirs need realpath
-   * because readdir(link) often returns SSH_FX_FAILURE on busybox/dropbear.
+   * List path: try as-is first (0 extra RTT). On Failure, realpath once (cached).
    */
   async resolveForList(remotePath: string): Promise<string> {
-    try {
-      const lst = await this.lstat(remotePath);
-      if (lst.isSymbolicLink()) {
-        try {
-          return await this.realpath(remotePath);
-        } catch {
-          // try manual join from readlink
-          try {
-            const target = await this.readlink(remotePath);
-            return resolveSymlinkTarget(remotePath, target);
-          } catch {
-            return remotePath;
-          }
-        }
-      }
-    } catch {
-      // ignore; try as-is
+    const hit = this.realpathCache.get(remotePath);
+    if (hit) {
+      return hit;
     }
     return remotePath;
+  }
+
+  /** After readdir fails, resolve symlink dir target. */
+  async resolveForListOnError(remotePath: string): Promise<string> {
+    try {
+      return await this.realpath(remotePath);
+    } catch {
+      try {
+        const target = await this.readlink(remotePath);
+        return resolveSymlinkTarget(remotePath, target);
+      } catch {
+        return remotePath;
+      }
+    }
+  }
+
+  /**
+   * Single followed stat for listing symlink entries (1 RTT).
+   * Returns FileType bits without readlink.
+   */
+  async probeSymlinkType(remotePath: string): Promise<number> {
+    // vscode.FileType values: File=1 Directory=2 SymbolicLink=64
+    const File = 1;
+    const Directory = 2;
+    const SymbolicLink = 64;
+    try {
+      const st = await this.stat(remotePath);
+      let base = File;
+      if (st.isDirectory()) {
+        base = Directory;
+      } else if (st.isFile()) {
+        base = File;
+      } else if (st.isSymbolicLink()) {
+        return SymbolicLink;
+      }
+      return base | SymbolicLink;
+    } catch {
+      return SymbolicLink;
+    }
+  }
+
+  clearCaches(): void {
+    this.realpathCache.clear();
+    this.statCache.clear();
   }
 
   readdir(remotePath: string): Promise<FileEntry[]> {
@@ -468,6 +526,7 @@ export class SftpSession {
   }
 
   private resetClient(): void {
+    this.clearCaches();
     try {
       this.sftp?.end();
     } catch {

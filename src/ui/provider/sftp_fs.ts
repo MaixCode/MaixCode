@@ -258,25 +258,23 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   ): Promise<[string, vscode.FileType][]> {
     const { mount, remotePath } = await this.resolve(uri);
     try {
-      // Symlink directories: readdir(link) often fails with SSH_FX_FAILURE
-      // (e.g. /sbin -> /usr/sbin on MaixCAM). Resolve then list target.
-      const listPath = await mount.session.resolveForList(remotePath);
+      // Fast path: readdir as-is (1 RTT). Only on Failure resolve symlink target.
       let list;
       try {
+        list = await mount.session.readdir(remotePath);
+      } catch {
+        const listPath =
+          await mount.session.resolveForListOnError(remotePath);
         list = await mount.session.readdir(listPath);
-      } catch (e) {
-        // last resort: if path itself is a symlink file, empty dir view
-        try {
-          const { stats } = await mount.session.statPreferFollow(remotePath);
-          if (stats.isDirectory()) {
-            throw e;
-          }
-          return [];
-        } catch {
-          throw e;
-        }
       }
-      const out: [string, vscode.FileType][] = [];
+
+      type Pending = {
+        name: string;
+        childPath: string;
+        type: vscode.FileType;
+        needProbe: boolean;
+      };
+      const pending: Pending[] = [];
       for (const ent of list) {
         const name = ent.filename;
         if (name === "." || name === "..") {
@@ -292,9 +290,29 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
         ) {
           continue;
         }
-        const type = await resolveEntryType(mount, childPath, ent);
-        out.push([name, type]);
+        const { type, needProbe } = entryTypeFromAttrs(ent.attrs?.mode);
+        pending.push({ name, childPath, type, needProbe });
       }
+
+      // Probe symlink targets in parallel (bounded), not serially.
+      const probes = pending.filter((p) => p.needProbe);
+      if (probes.length) {
+        const CONCURRENCY = 8;
+        for (let i = 0; i < probes.length; i += CONCURRENCY) {
+          const batch = probes.slice(i, i + CONCURRENCY);
+          const types = await Promise.all(
+            batch.map((p) => mount.session.probeSymlinkType(p.childPath))
+          );
+          for (let j = 0; j < batch.length; j++) {
+            batch[j].type = types[j] as vscode.FileType;
+          }
+        }
+      }
+
+      const out: [string, vscode.FileType][] = pending.map((p) => [
+        p.name,
+        p.type,
+      ]);
       out.sort((a, b) => {
         const aDir = (a[1] & vscode.FileType.Directory) !== 0;
         const bDir = (b[1] & vscode.FileType.Directory) !== 0;
@@ -702,57 +720,29 @@ function statsToFileStat(
 }
 
 /**
- * Map readdir entry to FileType. Symlinks that point to directories become
- * Directory|SymbolicLink so the tree can expand them.
+ * Sync type from readdir attrs only (0 RTT).
+ * Symlinks marked needProbe for a single followed stat later.
  */
-async function resolveEntryType(
-  mount: SftpMount,
-  childPath: string,
-  ent: { attrs?: { mode?: number } }
-): Promise<vscode.FileType> {
-  const mode = ent.attrs?.mode ?? 0;
-  const ifmt = mode & 0o170000;
-  // plain directory / file from dirent attrs
+function entryTypeFromAttrs(
+  mode: number | undefined
+): { type: vscode.FileType; needProbe: boolean } {
+  const m = mode ?? 0;
+  const ifmt = m & 0o170000;
   if (ifmt === 0o040000) {
-    return vscode.FileType.Directory;
+    return { type: vscode.FileType.Directory, needProbe: false };
   }
   if (ifmt === 0o100000) {
-    return vscode.FileType.File;
+    return { type: vscode.FileType.File, needProbe: false };
   }
   if (ifmt === 0o120000) {
-    // symlink: probe target type (follow) with lstat fallback
-    try {
-      const { stats, isLink } =
-        await mount.session.statPreferFollow(childPath);
-      let base = vscode.FileType.File;
-      if (stats.isDirectory()) {
-        base = vscode.FileType.Directory;
-      } else if (stats.isFile()) {
-        base = vscode.FileType.File;
-      } else if (stats.isSymbolicLink()) {
-        base = vscode.FileType.SymbolicLink;
-      }
-      return isLink ? base | vscode.FileType.SymbolicLink : base;
-    } catch {
-      return vscode.FileType.SymbolicLink;
-    }
+    // Default File|SymbolicLink until probe upgrades Directory links
+    return {
+      type: vscode.FileType.File | vscode.FileType.SymbolicLink,
+      needProbe: true,
+    };
   }
-  // unknown mode: try lstat once
-  try {
-    const { stats, followed } = await mount.session.statPreferFollow(childPath);
-    let type = vscode.FileType.File;
-    if (stats.isDirectory()) {
-      type = vscode.FileType.Directory;
-    } else if (stats.isSymbolicLink()) {
-      type = vscode.FileType.SymbolicLink;
-    }
-    if (!followed && stats.isSymbolicLink()) {
-      type = type | vscode.FileType.SymbolicLink;
-    }
-    return type;
-  } catch {
-    return vscode.FileType.Unknown;
-  }
+  // Unknown mode: treat as file, optional probe not needed for list speed
+  return { type: vscode.FileType.File, needProbe: false };
 }
 
 function mapSftpError(e: unknown, uri: vscode.Uri): Error {
