@@ -20,6 +20,15 @@ pnpm run test             # pretest = compile-tests + compile + lint, then vscod
 
 There is no monorepo of packages; workspace file only configures pnpm build allowances.
 
+## CI (GitHub Actions)
+
+- Workflow: `.github/workflows/build-vsix.yml` (`Build VSIX`).
+- Triggers: `push` / `pull_request` to `main` or `master`, plus `workflow_dispatch`.
+- Steps: `pnpm install --frozen-lockfile` → `pnpm run lint` → `pnpm run package:vsix` (`vsce package --no-dependencies`; `vscode:prepublish` runs production webpack first).
+- Artifact: uploads `*.vsix` as **`maixcode-vsix`** (retention 30 days). Download from the Actions run summary.
+- Local equivalent: `pnpm run package:vsix` → `maixcode-<version>.vsix` (gitignored).
+
+
 ## Layout
 
 | Path | Role |
@@ -36,6 +45,7 @@ There is no monorepo of packages; workspace file only configures pnpm build allo
 | `src/ui/` | sidebar, status bar, tree providers, image viewer webview |
 | `src/ui/provider/example.ts` | Example tree + open virtual/source file |
 | `src/ui/provider/example_fs.ts` | virtual FS (`example://`) + disk rehydrate |
+| `src/ui/provider/app_config_editor.ts` + `media/app_config_editor/*` | visual `app.yaml` WebviewPanel editor |
 | `src/debugger/` | inline Debug Adapter (not a separate Python process) |
 | `package.nls.json` / `package.nls.zh-cn.json` | Static contributes i18n (`%key%` in `package.json`) |
 | `l10n/bundle.l10n*.json` | Runtime `vscode.l10n.t` bundles (`l10n` field in package.json) |
@@ -56,7 +66,8 @@ Webpack: single Node target bundle `src/extension.ts` → `dist/extension.js`; `
 - **Activation**: `"activationEvents": ["*"]` — loads early; discovery starts in `activate`.
 - **Discovery**: mDNS over each non-internal IPv4 NIC; PTR `_ssh._tcp.local` with name prefix `maixcam`, then A records. Loop ~3s; stale drop ~4s.
 - **Device control**: WebSocket `ws://<ip>:7899`, binary framing (magic + version + command IDs in `websocket_service.ts`). Auth string `"maixvision"`.
-- **Project package / deploy**: `ProjectPackageService` + `ProjectDeployService` (`src/service/project_*`). `app.yaml` (id/name/version/author/desc/icon/files). Commands: `maixcode.configureProject`, `packageApp`, `installApp`, `packageAndInstallApp`, `runProject`. Package → `dist/maix-{id}-v{version}.zip` (single file → zip `main.py`; multi keeps paths; always include `app.yaml`+icon). Install → WS `InstallApp(16)` zip bytes; progress via `InstallAppAck` / `installApp` events. **Run Project** → packages folder then `vscode.debug.startDebugging` with `type: maixpy`, `mode: "project"`, `projectDir`, optional `projectZip`; adapter uses `MaixPyRuntime.startProject` / `RunSession.startProject` / WS `RunProject(18)`. Requires `main.py`; size warn >5MB block >30MB. UI: Device sidebar action rows + view title icons; Explorer folder context.
+- **Project package / deploy**: `ProjectPackageService` + `ProjectDeployService` (`src/service/project_*`). `app.yaml` (id/name/version/author/desc/icon/files). Commands: `maixcode.configureProject` (opens visual `AppConfigEditor` WebviewPanel; writes `app.yaml`), `packageApp`, `installApp`, `packageAndInstallApp`, `runProject`. Blocking QuickInput `configureInteractive` still used when package/install needs config mid-flow. Package progress toast dismisses before result dialogs (dialogs not inside `withProgress`). Package → `dist/maix-{id}-v{version}.zip` (single file → zip `main.py`; multi keeps paths; always include `app.yaml`+icon). Install → WS `InstallApp(16)` zip bytes; progress via `InstallAppAck` / `installApp` events. **Run Project** → packages folder then `vscode.debug.startDebugging` with `type: maixpy`, `mode: "project"`, `projectDir`, optional `projectZip`; adapter uses `MaixPyRuntime.startProject` / `RunSession.startProject` / WS `RunProject(18)`. Requires `main.py`; size warn >5MB block >30MB. UI: Device sidebar action rows + view title icons; Explorer folder context.
+- **App config editor** (`ui/provider/app_config_editor.ts` + `media/app_config_editor/*`): editor `WebviewPanel` (`viewType` `maixcodeAppConfig`) for `app.yaml` (id/name/version/author/desc/icon/files). Command `maixcode.configureProject` → `AppConfigEditor.show(hint)`. Host loads/saves via `ProjectPackageService`; file checklist from `listProjectFiles`; icon browse (copy external → `app.png`); watches `app.yaml`/`app.yml` for external edits (reload form); form changes debounce auto-save; icons written 1:1 via `sharp` cover crop to `app.png`; Ctrl/Cmd+S forces save + toast. No `Instance` import; inject `packageService`.
 - **Install Runtime**: `RuntimeService` (`src/service/runtime_service.ts`). Command `maixcode.installRuntime`. Flow (MaixVision-compatible): DeviceInfo JSON includes `device`, `runtime`, `apiKey`, `sysVer`, `maixpyVer` → GET `https://maixvision.sipeed.com/api/v1/devices/encryption/version` (headers `token: MaixVision2024`, params `uid=apiKey`, `os`, `maixpy`) → if newer (or reinstall) GET `/v1/devices/encryption` (`uid`, `device` mapped via `MaixCAM2→maixcam2`, `MaixCAM/MaixCAM-Pro→maixcam`, `version`) as `application/octet-stream` → payload `version + NUL + firmware` via WS `UpdateRuntime(19)`; progress `UpdateRuntimeAck(20)` (`content[0]`=progress, `content[1]===0` success); at 100% re-query `DeviceInfo`. UI: Device tree action **Install Runtime** + view title icon; shows Device/Runtime lines under Current Device Info.
 - **SSH terminal**: `SshTerminalService` (`src/service/ssh/`) uses `ssh2` + VS Code `Pseudoterminal` (no system `ssh`). Command `maixcode.openDeviceTerminal`. Credentials: `maixcode.sshCredentials` (array, tried in order; auth fail → next; network fail → stop). Port/timeout: `maixcode.sshPort`, `maixcode.sshConnectTimeoutMs`. Multi-session: each open creates a new terminal. UI: Device tree Open SSH Terminal under Current Device Info + inline on `maixcode-deviceIp`. Host key verifier accepts all (dev convenience). Webpack externals: `ssh2`, `cpu-features`. `pnpm-workspace` allowBuilds for `ssh2` / `cpu-features`.
 - **SFTP virtual FS**: `SftpService` + `SftpFileSystemProvider` (`maixsftp://`). Separate SSH connection from shell (`SftpSession`). Command `maixcode.openDeviceSftp` adds a workspace folder (`MaixSFTP: <name>`) and reveals it in Explorer. URI: `maixsftp://<authority>/<remote/abs/path>` (authority = sanitized device name or IP). Config: `maixcode.sftpBookmarks` (first-level folders: name/remotePath/order; default Root `/` + Home `/root`), legacy `sftpRoot`, `maixcode.sftpReadOnly`, `maixcode.sftpHidePatterns` (glob or `/regex/`; `readDirectory`), `maixcode.sftpShowFiltered` (show filtered with `H` badge via `SftpFileDecorationProvider`). Explorer context on `resourceScheme == maixsftp`: Refresh (`maixcode.sftpRefresh`), Filter / Unfilter / Toggle Show Filtered / Edit Patterns. Filter adds full remote path to settings (Global). Shared credentials: `credentials.ts`. UI: Device Info + inline `deviceIp`. Auto-open: `autoOpenSftp` on connection list change (quiet, dedupe). Reload restore: persist mounts in `globalState` (`SftpMountsStateKey`); `ensureMount` lazy-remounts when Explorer hits `maixsftp://` with empty memory. Provider: full FS ops; symlink-aware (`lstat`/`readlink`/`statPreferFollow`, dir listing via `realpath` for link dirs like `/sbin`); watch no-op.
@@ -184,6 +195,7 @@ Rules:
 - When adding user-visible runtime strings: wrap with `vscode.l10n.t` and add the same English key + Chinese value to `l10n/bundle.l10n.zh-cn.json` (and `bundle.l10n.json` if maintained).
 - Button labels used for `===` comparisons must use the **localized** string for both the button argument and the comparison (capture in a const).
 - Image viewer webview: inject localized labels from the extension host (escape for HTML); client `media/image_viewer` may keep short English HUD tokens (HTTP/WS/MJPEG).
+- App config editor webview: same pattern — host injects `vscode.l10n.t` labels into HTML; client `media/app_config_editor` keeps short English fallbacks for empty states.
 
 ## Conventions / gotchas
 

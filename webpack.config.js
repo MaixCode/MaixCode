@@ -25,6 +25,8 @@ const extensionConfig = {
     // ssh2 optional natives / avoid bundling crypto binding
     'ssh2': 'commonjs ssh2',
     'cpu-features': 'commonjs cpu-features',
+    // sharp optional native; do not bundle libvips
+    'sharp': 'commonjs sharp',
   },
   resolve: {
     // support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader

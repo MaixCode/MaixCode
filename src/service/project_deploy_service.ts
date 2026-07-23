@@ -116,36 +116,35 @@ export class ProjectDeployService {
       }
     }
 
-    return vscode.window.withProgress(
+    // Keep dialogs outside withProgress so the toast can dismiss immediately.
+    const result = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
         title: vscode.l10n.t("MaixCode: Packaging app..."),
         cancellable: false,
       },
-      async () => {
-        const result = await this.packages.packageApp(dir);
-        if (!result.ok) {
-          vscode.window.showErrorMessage(vscode.l10n.t("Package failed: {0}", result.message));
-          return undefined;
-        }
-        const reveal = vscode.l10n.t("Reveal in Explorer");
-        const installTo = vscode.l10n.t("Install to Device");
-        const open = await vscode.window.showInformationMessage(
-          vscode.l10n.t("Packaged {0} ({1})", result.info.name, this.packages.formatSize(result.info.size)),
-          reveal,
-          installTo
-        );
-        if (open === reveal) {
-          await vscode.commands.executeCommand(
-            "revealFileInOS",
-            vscode.Uri.file(result.info.path)
-          );
-        } else if (open === installTo) {
-          await this.installPackagePath(result.info.path, result.config);
-        }
-        return result.info;
-      }
+      async () => this.packages.packageApp(dir)
     );
+    if (!result.ok) {
+      vscode.window.showErrorMessage(vscode.l10n.t("Package failed: {0}", result.message));
+      return undefined;
+    }
+    const reveal = vscode.l10n.t("Reveal in Explorer");
+    const installTo = vscode.l10n.t("Install to Device");
+    const open = await vscode.window.showInformationMessage(
+      vscode.l10n.t("Packaged {0} ({1})", result.info.name, this.packages.formatSize(result.info.size)),
+      reveal,
+      installTo
+    );
+    if (open === reveal) {
+      await vscode.commands.executeCommand(
+        "revealFileInOS",
+        vscode.Uri.file(result.info.path)
+      );
+    } else if (open === installTo) {
+      await this.installPackagePath(result.info.path, result.config);
+    }
+    return result.info;
   }
 
   public async installToDevice(hint?: string): Promise<void> {

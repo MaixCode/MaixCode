@@ -11,6 +11,7 @@ import { SshTerminalService } from "./service/ssh/ssh_terminal_service";
 import { SftpService } from "./service/ssh/sftp_service";
 import { ConfigKeys, ConfigSection } from "./constants";
 import { ProjectDeployService } from "./service/project_deploy_service";
+import { AppConfigEditor } from "./ui/provider/app_config_editor";
 import { RuntimeService } from "./service/runtime_service";
 import { workspaceFileAccessor } from "./debugger/file_accessor";
 
@@ -31,6 +32,7 @@ export class Instance {
   public sshTerminalService: SshTerminalService;
   public sftpService: SftpService;
   public projectDeployService: ProjectDeployService;
+  public appConfigEditor: AppConfigEditor;
   public runtimeService: RuntimeService;
   public onStatusChange: (status: Status) => void = () => {};
   private status: Status = Status.offline;
@@ -108,6 +110,10 @@ export class Instance {
       getConnectedDevices: () => this.deviceManager.getConnectedDevice(),
       getCurrentDevice: () => this.deviceManager.getCurrentDevice(),
       fileAccessor: workspaceFileAccessor,
+    });
+
+    this.appConfigEditor = new AppConfigEditor(context, {
+      packageService: this.projectDeployService.packageService,
     });
 
     this.runtimeService = new RuntimeService({

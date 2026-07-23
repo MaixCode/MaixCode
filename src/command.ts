@@ -244,9 +244,7 @@ export function initCommands(context: vscode.ExtensionContext) {
     {
       name: Commands.configureProject,
       func: async (uri?: vscode.Uri) => {
-        await Instance.instance.projectDeployService.configureProject(
-          projectDirHint(uri)
-        );
+        await Instance.instance.appConfigEditor.show(projectDirHint(uri));
       },
     },
     {
