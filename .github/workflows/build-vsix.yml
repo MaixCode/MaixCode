@@ -1,0 +1,61 @@
+name: Build VSIX
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build extension package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Package VSIX
+        run: pnpm run package:vsix
+
+      - name: Resolve VSIX path
+        id: vsix
+        run: |
+          set -euo pipefail
+          VSIX=$(ls -1 *.vsix | head -n 1)
+          if [ -z "${VSIX}" ]; then
+            echo "No .vsix produced" >&2
+            exit 1
+          fi
+          echo "name=${VSIX}" >> "${GITHUB_OUTPUT}"
+          echo "Packed: ${VSIX} ($(du -h "${VSIX}" | cut -f1))"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maixcode-vsix
+          path: ${{ steps.vsix.outputs.name }}
+          if-no-files-found: error
+          retention-days: 30
