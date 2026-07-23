@@ -6,7 +6,7 @@ import {
   TerminatedEvent,
 } from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol";
-import { error, formatUnknown, log, showLog } from "../logger";
+import { debug, error, formatUnknown, log, showLog } from "../logger";
 import { Instance } from "../instance";
 import { FileAccessor, MaixPyRuntime } from "./runtime";
 import { Status } from "../model/status";
@@ -72,7 +72,7 @@ export class MaixPyDebugSession extends DebugSession {
             break;
         }
 
-        log(`[MaixPyDebugSession] runtime output type=${type} category=${category}: ${message.slice(0, 200)}`);
+        debug(`[MaixPyDebugSession] runtime output type=${type} category=${category}: ${message.slice(0, 200)}`);
         this.sendEvent(new OutputEvent(line, category));
       } catch (e) {
         error(`[MaixPyDebugSession] output handler failed: ${formatUnknown(e)}`);

@@ -6,7 +6,7 @@ import {
   isCodeAlreadyRunningMessage,
   RunSession,
 } from "../service/run_session";
-import { error as logError, formatUnknown, log, warn } from "../logger";
+import { error as logError, formatUnknown, log, warn, debug } from "../logger";
 import {
   readResolvedSource,
   resolveSourceForRun,
@@ -348,7 +348,7 @@ export class MaixPyRuntime extends EventEmitter {
 
       session.start(code, {
         onOutput: (text) => {
-          log(`[MaixPyRuntime] device output: ${String(text).slice(0, 300)}`);
+          debug(`[MaixPyRuntime] device output: ${String(text).slice(0, 300)}`);
           this.sendEvent("output", "out", text);
         },
         onError: (msg) => {
@@ -432,7 +432,7 @@ export class MaixPyRuntime extends EventEmitter {
 
       session.startProject(zipData, {
         onOutput: (text) => {
-          log(`[MaixPyRuntime] device output: ${String(text).slice(0, 300)}`);
+          debug(`[MaixPyRuntime] device output: ${String(text).slice(0, 300)}`);
           this.sendEvent("output", "out", text);
         },
         onError: (msg) => {
