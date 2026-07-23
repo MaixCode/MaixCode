@@ -8,6 +8,7 @@ import { DeviceManager } from "./service/device_manager";
 import { ImageViewer } from "./ui/provider/image_viewer";
 import { ImageService } from "./service/image_service";
 import { SshTerminalService } from "./service/ssh/ssh_terminal_service";
+import { SftpService } from "./service/ssh/sftp_service";
 import { ConfigKeys, ConfigSection } from "./constants";
 
 /**
@@ -25,6 +26,7 @@ export class Instance {
   public exampleFileProvider: ExampleFileProvider;
   public imageViewer: ImageViewer;
   public sshTerminalService: SshTerminalService;
+  public sftpService: SftpService;
   public onStatusChange: (status: Status) => void = () => {};
   private status: Status = Status.offline;
 
@@ -33,6 +35,7 @@ export class Instance {
   private constructor(context: vscode.ExtensionContext) {
     this.imageService = new ImageService(context);
     this.sshTerminalService = new SshTerminalService(context);
+    this.sftpService = new SftpService(context);
     this.discoveryService = new DiscoveryService(context);
     this.sidebar = new Sidebar(context);
     this.statusbar = new StatusBar();
@@ -91,7 +94,10 @@ export class Instance {
     });
 
     context.subscriptions.push({
-      dispose: () => this.sshTerminalService.dispose(),
+      dispose: () => {
+        this.sshTerminalService.dispose();
+        this.sftpService.dispose();
+      },
     });
 
     context.subscriptions.push(

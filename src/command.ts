@@ -125,6 +125,41 @@ export function initCommands(context: vscode.ExtensionContext) {
       },
     },
     {
+      name: Commands.openDeviceSftp,
+      func: (args?: {
+        ip?: string;
+        host?: string;
+        name?: string;
+        deviceName?: string;
+      }) => {
+        let host = (args?.ip || args?.host || "").trim();
+        let deviceName = args?.name || args?.deviceName;
+        if (!host) {
+          const connected =
+            Instance.instance.deviceManager.getConnectedDevice();
+          for (const d of connected) {
+            const ip = d.device?.ip;
+            if (ip) {
+              host = ip;
+              deviceName = deviceName || d.device?.name;
+              break;
+            }
+          }
+        }
+        if (!host) {
+          vscode.window.showErrorMessage(
+            "No device IP. Select a device or connect first."
+          );
+          return;
+        }
+        void Instance.instance.sftpService
+          .open({ host, deviceName })
+          .catch((e) => {
+            error(`[Command] openDeviceSftp: ${formatUnknown(e)}`, true);
+          });
+      },
+    },
+    {
       name: Commands.runOnDevice,
       func: async () => {
         showLog();

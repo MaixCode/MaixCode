@@ -10,6 +10,9 @@ export namespace Commands {
   /** Open interactive SSH terminal to device (ssh2 + Pseudoterminal) */
   export const openDeviceTerminal = "maixcode.openDeviceTerminal";
 
+  /** Open device SFTP as virtual FS workspace folder */
+  export const openDeviceSftp = "maixcode.openDeviceSftp";
+
   // Image Viewer Commands
   export const openImageViewer = "maixcode.openImageViewer";
 
@@ -42,6 +45,11 @@ export namespace ConfigKeys {
   export const sshPort = "sshPort";
   export const sshConnectTimeoutMs = "sshConnectTimeoutMs";
   export const sshCredentials = "sshCredentials";
+  /** Remote directory mounted as workspace root */
+  export const sftpRoot = "sftpRoot";
+  /** Glob or /regex/ patterns to hide from SFTP Explorer listings */
+  export const sftpHidePatterns = "sftpHidePatterns";
+  export const sftpReadOnly = "sftpReadOnly";
 }
 
 /** globalState key: last successfully connected device { name, ip } */

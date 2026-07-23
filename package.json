@@ -72,6 +72,12 @@
         "category": "MaixCode"
       },
       {
+        "command": "maixcode.openDeviceSftp",
+        "title": "Open Device Files (SFTP)",
+        "icon": "$(folder-opened)",
+        "category": "MaixCode"
+      },
+      {
         "command": "maixcode.discoverDevice",
         "title": "Discover Devices",
         "category": "MaixCode"
@@ -139,6 +145,11 @@
           "command": "maixcode.openDeviceTerminal",
           "when": "viewItem == maixcode-deviceIp",
           "group": "inline@2"
+        },
+        {
+          "command": "maixcode.openDeviceSftp",
+          "when": "viewItem == maixcode-deviceIp",
+          "group": "inline@3"
         },
         {
           "command": "maixcode.refreshExampleSource",
@@ -374,6 +385,36 @@
                 "description": "Optional label for logs only"
               }
             }
+          }
+        },
+        "maixcode.sftpRoot": {
+          "type": "string",
+          "default": "/",
+          "description": "Remote directory mounted when opening device SFTP (POSIX path)."
+        },
+        "maixcode.sftpReadOnly": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, SFTP virtual filesystem is read-only."
+        },
+        "maixcode.sftpHidePatterns": {
+          "type": "array",
+          "default": [
+            ".*",
+            "proc",
+            "sys",
+            "dev",
+            "run",
+            "tmp",
+            "*.ko",
+            "/lib/**",
+            "/usr/lib/**",
+            "/var/log/**",
+            "/^core\\.\\d+$/"
+          ],
+          "description": "Hide matching names/paths from SFTP Explorer listings. Each entry is a glob (* ? **) or a JS regex literal like /pattern/flags. Matched against basename and full remote path.",
+          "items": {
+            "type": "string"
           }
         }
       }

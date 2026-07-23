@@ -3,7 +3,8 @@ import { ConfigKeys, ConfigSection } from "../../constants";
 import { error, formatUnknown, log } from "../../logger";
 import { SshPseudoTerminal } from "./ssh_pseudo_terminal";
 import { SshSession } from "./ssh_session";
-import type { OpenSshTerminalRequest, SshCredential } from "./types";
+import { readSshCredentials } from "./credentials";
+import type { OpenSshTerminalRequest } from "./types";
 
 type SessionHandle = {
   id: string;
@@ -36,7 +37,7 @@ export class SshTerminalService {
       req.port ??
       cfg.get<number>(ConfigKeys.sshPort, 22);
     const timeoutMs = cfg.get<number>(ConfigKeys.sshConnectTimeoutMs, 10000);
-    const credentials = readCredentials(cfg);
+    const credentials = readSshCredentials(cfg);
 
     if (!credentials.length) {
       const pick = await vscode.window.showErrorMessage(
@@ -114,29 +115,4 @@ export class SshTerminalService {
     }
     log(`[SSH] session closed ${id}`);
   }
-}
-
-function readCredentials(
-  cfg: vscode.WorkspaceConfiguration
-): SshCredential[] {
-  const raw = cfg.get<unknown>(ConfigKeys.sshCredentials, []);
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  const out: SshCredential[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-    const o = item as Record<string, unknown>;
-    const username = typeof o.username === "string" ? o.username.trim() : "";
-    if (!username) {
-      continue;
-    }
-    const password =
-      typeof o.password === "string" ? o.password : undefined;
-    const label = typeof o.label === "string" ? o.label : undefined;
-    out.push({ username, password, label });
-  }
-  return out;
 }

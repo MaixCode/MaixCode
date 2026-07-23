@@ -47,7 +47,7 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
     } else if (element instanceof DeviceInfoGroupItem) {
       return Promise.resolve([
         ...this.getInfoItems(),
-        ...this.getOpenTerminalItems(),
+        ...this.getDeviceActionItems(),
         new DeviceDisconnectItem(),
       ]);
     }
@@ -94,13 +94,15 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
     return [];
   }
 
-  private getOpenTerminalItems(): DeviceOpenTerminalItem[] {
+  private getDeviceActionItems(): TreeItem[] {
     const deviceList = Instance.instance.deviceManager.getConnectedDevice();
     for (const device of deviceList) {
       const ip = device.device?.ip;
       if (ip) {
+        const name = device.device?.name || "";
         return [
-          new DeviceOpenTerminalItem(ip, device.device?.name || ""),
+          new DeviceOpenTerminalItem(ip, name),
+          new DeviceOpenSftpItem(ip, name),
         ];
       }
     }
@@ -181,6 +183,21 @@ export class DeviceOpenTerminalItem extends TreeItem {
   contextValue = "maixcode-deviceOpenTerminal";
 
   iconPath = new vscode.ThemeIcon("terminal");
+}
+
+export class DeviceOpenSftpItem extends TreeItem {
+  constructor(public ip: string, public name: string) {
+    super("Open Device Files (SFTP)");
+    this.command = {
+      command: Commands.openDeviceSftp,
+      title: "Open Device Files (SFTP)",
+      arguments: [{ ip, name }],
+    };
+  }
+
+  contextValue = "maixcode-deviceOpenSftp";
+
+  iconPath = new vscode.ThemeIcon("folder-opened");
 }
 
 export class DeviceDisconnectItem extends TreeItem {
