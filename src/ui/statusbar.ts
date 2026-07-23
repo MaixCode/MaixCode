@@ -5,6 +5,8 @@ import { Commands } from "../constants";
 
 export class StatusBar {
   private statusBarItem: vscode.StatusBarItem;
+  private runFileItem: vscode.StatusBarItem;
+  private runProjectItem: vscode.StatusBarItem;
 
   constructor() {
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -15,10 +17,61 @@ export class StatusBar {
     this.statusBarItem.command = Commands.connectDevice;
     this.applyStatus(Status.offline);
     this.statusBarItem.show();
+
+    // Run actions sit to the right of device status (lower priority = further right on Left)
+    this.runFileItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Left,
+      99
+    );
+    this.runFileItem.name = "MaixCode Run File";
+    this.runFileItem.text = "$(play) Run File";
+    this.runFileItem.tooltip = "Run current Python file on MaixCAM";
+    this.runFileItem.command = Commands.runOnDevice;
+    this.runFileItem.show();
+
+    this.runProjectItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Left,
+      98
+    );
+    this.runProjectItem.name = "MaixCode Run Project";
+    this.runProjectItem.text = "$(run-all) Run Project";
+    this.runProjectItem.tooltip =
+      "Package workspace project and run on MaixCAM (RunProject)";
+    this.runProjectItem.command = Commands.runProject;
+    this.runProjectItem.show();
+
+    this.updateRunButtons(Status.offline);
   }
 
   public updateByStatus(status: Status) {
     this.applyStatus(status);
+    this.updateRunButtons(status);
+  }
+
+  private updateRunButtons(status: Status) {
+    const online =
+      status === Status.online ||
+      status === Status.running ||
+      status === Status.connecting;
+    if (online) {
+      this.runFileItem.backgroundColor = undefined;
+      this.runProjectItem.backgroundColor = undefined;
+      this.runFileItem.tooltip = "Run current Python file on MaixCAM";
+      this.runProjectItem.tooltip =
+        "Package workspace project and run on MaixCAM (RunProject)";
+    } else {
+      this.runFileItem.tooltip =
+        "Run current file (connect a MaixCAM first)";
+      this.runProjectItem.tooltip =
+        "Run project (connect a MaixCAM first)";
+    }
+    if (status === Status.running) {
+      this.runFileItem.text = "$(debug-restart) Re-run File";
+      this.runProjectItem.text = "$(debug-restart) Re-run Project";
+    } else {
+      this.runFileItem.text = "$(play) Run File";
+      this.runProjectItem.text = "$(run-all) Run Project";
+    }
   }
 
   private applyStatus(status: Status) {
@@ -32,7 +85,8 @@ export class StatusBar {
         this.statusBarItem.text = device
           ? `$(play) MaixCode: Running · ${device}`
           : "$(play) MaixCode: Running";
-        this.statusBarItem.tooltip = "Program is running on the device";
+        this.statusBarItem.tooltip =
+          "Program is running on the device — click to re-run file";
         this.statusBarItem.command = Commands.runOnDevice;
         break;
       }
@@ -42,7 +96,8 @@ export class StatusBar {
         this.statusBarItem.text = device
           ? `$(vm-active) MaixCode: Online · ${device}`
           : "$(vm-active) MaixCode: Online";
-        this.statusBarItem.tooltip = "Device connected — click to connect another";
+        this.statusBarItem.tooltip =
+          "Device connected — click to connect another";
         this.statusBarItem.command = Commands.connectDevice;
         break;
       }
@@ -106,5 +161,7 @@ export class StatusBar {
 
   public dispose() {
     this.statusBarItem.dispose();
+    this.runFileItem.dispose();
+    this.runProjectItem.dispose();
   }
 }
