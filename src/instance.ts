@@ -82,6 +82,7 @@ export class Instance {
             deviceName: d.device?.name,
           }))
         );
+        this.imageViewer?.tryAutoOpenSidebar();
       },
     });
 
@@ -152,6 +153,13 @@ export class Instance {
               deviceName: d.device?.name,
             }))
           );
+        }
+        if (
+          e.affectsConfiguration(
+            `${ConfigSection}.${ConfigKeys.autoOpenImageViewer}`
+          )
+        ) {
+          this.imageViewer.tryAutoOpenSidebar(true);
         }
         if (
           e.affectsConfiguration(

@@ -554,6 +554,11 @@
           "default": true,
           "description": "%maixcode.config.imageViewerAutoStart%"
         },
+        "maixcode.autoOpenImageViewer": {
+          "type": "boolean",
+          "default": true,
+          "description": "%maixcode.config.autoOpenImageViewer%"
+        },
         "maixcode.exampleSources": {
           "type": "array",
           "default": [

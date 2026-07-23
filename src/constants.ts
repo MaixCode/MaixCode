@@ -64,6 +64,8 @@ export namespace ConfigKeys {
   export const imageViewerDefaultMode = "imageViewerDefaultMode";
   export const imageHttpIntervalMs = "imageHttpIntervalMs";
   export const imageViewerAutoStart = "imageViewerAutoStart";
+  /** Auto-open secondary-sidebar Image view when a device connects */
+  export const autoOpenImageViewer = "autoOpenImageViewer";
   export const sshPort = "sshPort";
   export const sshConnectTimeoutMs = "sshConnectTimeoutMs";
   export const sshCredentials = "sshCredentials";

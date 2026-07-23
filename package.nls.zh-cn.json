@@ -54,6 +54,7 @@
   "maixcode.config.imageViewerDefaultMode.mjpeg": "MJPEG 多部分流",
   "maixcode.config.imageHttpIntervalMs": "图像预览中 HTTP 轮询间隔（毫秒）（33 约 30fps）",
   "maixcode.config.imageViewerAutoStart": "打开图像预览且已连接设备时自动开始推流",
+  "maixcode.config.autoOpenImageViewer": "设备连接时自动打开右侧栏图像预览。",
   "maixcode.config.exampleSources": "示例源（一级目录）。类型：sipeed | local_folder | github_repo。",
   "maixcode.config.exampleSources.id": "唯一 id；用作 sources/<id>/ 缓存目录名",
   "maixcode.config.exampleSources.label": "示例树中的显示名称",

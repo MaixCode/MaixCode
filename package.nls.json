@@ -54,6 +54,7 @@
   "maixcode.config.imageViewerDefaultMode.mjpeg": "MJPEG multipart stream",
   "maixcode.config.imageHttpIntervalMs": "Default HTTP poll interval (ms) in Image Preview (~30fps at 33)",
   "maixcode.config.imageViewerAutoStart": "Auto-start stream when Image Preview opens with a connected device",
+  "maixcode.config.autoOpenImageViewer": "Automatically open the secondary-sidebar Image view when a device connects.",
   "maixcode.config.exampleSources": "Example sources as first-level folders. Types: sipeed | local_folder | github_repo.",
   "maixcode.config.exampleSources.id": "Unique id; used as cache folder name under sources/<id>/",
   "maixcode.config.exampleSources.label": "Display name in the Example tree",

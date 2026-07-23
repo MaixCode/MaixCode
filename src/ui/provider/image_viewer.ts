@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { log, warn } from "../../logger";
 import { ImageService } from "../../service/image_service";
+import { ConfigKeys, ConfigSection } from "../../constants";
 
 export interface ImageViewerDevice {
   /** Frame store / HTTP key (device name, matching DeviceService onFrame) */
@@ -34,6 +35,8 @@ export class ImageViewer implements vscode.WebviewViewProvider {
   private devicePoll: NodeJS.Timeout | undefined;
   private unsubConnection: (() => void) | undefined;
   private lastDeviceJson = "";
+  /** Dedupe auto-open while at least one device stays connected */
+  private autoOpenedWhileConnected = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -87,6 +90,30 @@ export class ImageViewer implements vscode.WebviewViewProvider {
   /** Focus the secondary-sidebar Image view. */
   public async showSidebar(): Promise<void> {
     await vscode.commands.executeCommand(`${ImageViewer.viewId}.focus`);
+  }
+
+  /**
+   * Open Image view when maixcode.autoOpenImageViewer is true and a device is connected.
+   * Opens once per connected stretch (resets when all devices disconnect).
+   */
+  public tryAutoOpenSidebar(force = false): void {
+    const cfg = vscode.workspace.getConfiguration(ConfigSection);
+    if (!cfg.get<boolean>(ConfigKeys.autoOpenImageViewer, true)) {
+      return;
+    }
+    const devices = this.deps.listConnectedDevices();
+    if (devices.length === 0) {
+      this.autoOpenedWhileConnected = false;
+      return;
+    }
+    if (this.autoOpenedWhileConnected && !force) {
+      return;
+    }
+    this.autoOpenedWhileConnected = true;
+    log("[ImageViewer] auto-open sidebar");
+    void this.showSidebar().catch((e) => {
+      warn(`[ImageViewer] auto-open failed: ${e}`);
+    });
   }
 
   /** Open (or reveal) a larger editor WebviewPanel. */

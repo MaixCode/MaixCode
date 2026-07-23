@@ -118,7 +118,8 @@ Project mode:
 | `maixcode.imageServicePort` | `9090` | Local image service port (0=ephemeral) |
 | `maixcode.imageViewerDefaultMode` | `"websocket"` | Default image transport |
 | `maixcode.imageHttpIntervalMs` | `33` | HTTP poll interval (ms) |
-| `maixcode.imageViewerAutoStart` | `true` | Auto-start stream on device connect |
+| `maixcode.imageViewerAutoStart` | `true` | Auto-start stream when preview opens with a device |
+| `maixcode.autoOpenImageViewer` | `true` | Auto-open Image sidebar on connect |
 | `maixcode.sshPort` | `22` | SSH port |
 | `maixcode.sshConnectTimeoutMs` | `10000` | SSH connect timeout |
 | `maixcode.sshCredentials` | `root`/`root`, `root`/`sipeed` | SSH credentials list (tried in order) |
