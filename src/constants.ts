@@ -68,3 +68,6 @@ export namespace ConfigKeys {
 
 /** globalState key: last successfully connected device { name, ip } */
 export const LastConnectedDeviceKey = "maixcode.lastConnectedDevice";
+
+/** globalState: persisted SFTP mounts for reload restore */
+export const SftpMountsStateKey = "maixcode.sftpMounts";

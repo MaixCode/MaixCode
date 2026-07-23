@@ -29,6 +29,10 @@ export type SftpMount = {
  * Virtual FS for device SFTP.
  * URI: maixsftp://<authority>/absolute/remote/path
  */
+export type EnsureSftpMount = (
+  authority: string
+) => Promise<SftpMount | undefined>;
+
 export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   static readonly scheme = "maixsftp";
 
@@ -37,6 +41,14 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
     vscode.FileChangeEvent[]
   >();
   readonly onDidChangeFile = this._emitter.event;
+
+  /**
+   * Called when Explorer hits a maixsftp URI with no in-memory mount
+   * (typical after window reload). Wired by SftpService.
+   */
+  ensureMount: EnsureSftpMount | undefined;
+
+  private remountInFlight = new Map<string, Promise<SftpMount | undefined>>();
 
   registerMount(mount: SftpMount): void {
     this.mounts.set(mount.authority, mount);
@@ -534,14 +546,18 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.Unavailable(uri);
     }
     const authority = uri.authority;
-    const mount = this.mounts.get(authority);
+    let mount = this.mounts.get(authority);
+    if (!mount) {
+      mount = await this.tryEnsureMount(authority);
+    }
     if (!mount) {
       throw vscode.FileSystemError.Unavailable(
-        `No SFTP mount for ${authority}. Open device files first.`
+        `No SFTP mount for ${authority}. Reconnect device or Open Device Files (SFTP).`
       );
     }
     try {
       if (!mount.session.isConnected) {
+        // Session may have been reset after drop; reconnect in place
         await mount.session.ensureConnected({
           host: mount.host,
           port: mount.port,
@@ -551,13 +567,44 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
         });
       }
     } catch (e) {
-      error(`[SFTP] connect failed: ${formatUnknown(e)}`);
-      throw vscode.FileSystemError.Unavailable(
-        `SFTP connect failed: ${formatUnknown(e)}`
+      // Session may be disposed after hard failure — rebuild via ensureMount
+      warn(
+        `[SFTP] reconnect failed for ${authority}, remounting: ${formatUnknown(e)}`
       );
+      this.unregisterMount(authority);
+      mount = await this.tryEnsureMount(authority);
+      if (!mount || !mount.session.isConnected) {
+        error(`[SFTP] connect failed: ${formatUnknown(e)}`);
+        throw vscode.FileSystemError.Unavailable(
+          `SFTP connect failed: ${formatUnknown(e)}`
+        );
+      }
     }
     const remotePath = uriPathToRemote(uri.path);
     return { mount, remotePath };
+  }
+
+  private async tryEnsureMount(
+    authority: string
+  ): Promise<SftpMount | undefined> {
+    if (!this.ensureMount) {
+      return undefined;
+    }
+    const inflight = this.remountInFlight.get(authority);
+    if (inflight) {
+      return inflight;
+    }
+    const p = this.ensureMount(authority)
+      .catch((e) => {
+        warn(`[SFTP] ensureMount ${authority}: ${formatUnknown(e)}`);
+        return undefined;
+      })
+      .finally(() => {
+        this.remountInFlight.delete(authority);
+      });
+    this.remountInFlight.set(authority, p);
+    const mount = await p;
+    return mount ?? this.mounts.get(authority);
   }
 }
 

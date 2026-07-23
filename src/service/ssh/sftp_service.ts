@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
-import { ConfigKeys, ConfigSection } from "../../constants";
+import {
+  ConfigKeys,
+  ConfigSection,
+  SftpMountsStateKey,
+} from "../../constants";
 import { error, formatUnknown, log } from "../../logger";
 import { readSshCredentials } from "./credentials";
 import {
@@ -12,6 +16,7 @@ import { SftpFileDecorationProvider } from "../../ui/provider/sftp_decoration";
 import {
   buildSftpUri,
   SftpFileSystemProvider,
+  type SftpMount,
 } from "../../ui/provider/sftp_fs";
 
 export type OpenSftpRequest = {
@@ -20,6 +25,15 @@ export type OpenSftpRequest = {
   port?: number;
   /** Suppress notifications / Explorer focus (auto-open). */
   quiet?: boolean;
+};
+
+/** Saved across window reloads (no live session). */
+type PersistedSftpMount = {
+  authority: string;
+  host: string;
+  port: number;
+  remoteRoot: string;
+  deviceName?: string;
 };
 
 /**
@@ -37,6 +51,7 @@ export class SftpService {
   constructor(private readonly context: vscode.ExtensionContext) {
     this.fs = new SftpFileSystemProvider();
     this.decorations = new SftpFileDecorationProvider(this.fs);
+    this.fs.ensureMount = (authority) => this.remountAuthority(authority);
     this.ensureProviderRegistered();
     context.subscriptions.push(
       vscode.window.registerFileDecorationProvider(this.decorations),
@@ -62,6 +77,8 @@ export class SftpService {
       }),
       { dispose: () => this.decorations.dispose() }
     );
+    // After reload, workspace may still list maixsftp folders — restore mounts.
+    void this.restorePersistedMounts();
   }
 
   get fileSystem(): SftpFileSystemProvider {
@@ -169,6 +186,7 @@ export class SftpService {
             readOnly,
             showFiltered,
           });
+          this.persistMounts();
 
           const folderUri = buildSftpUri(authority, resolved);
           const name = `MaixSFTP: ${req.deviceName || host}`;
@@ -467,8 +485,233 @@ export class SftpService {
     log("[SFTP] refresh all mounts");
   }
 
+  /**
+   * Rebuild a live mount for authority (reload / reconnect).
+   * Uses persisted meta + current sshCredentials settings.
+   */
+  async remountAuthority(authority: string): Promise<SftpMount | undefined> {
+    if (this.disposed) {
+      return undefined;
+    }
+    const existing = this.fs.getMount(authority);
+    if (existing?.session.isConnected) {
+      return existing;
+    }
+    if (existing) {
+      this.fs.unregisterMount(authority);
+    }
+
+    const meta = this.findPersistedMount(authority);
+    if (!meta) {
+      // Try workspace folder URI for path/host hints
+      const folder = (vscode.workspace.workspaceFolders ?? []).find(
+        (f) =>
+          f.uri.scheme === SftpFileSystemProvider.scheme &&
+          f.uri.authority === authority
+      );
+      if (!folder) {
+        log(`[SFTP] remount: no meta for ${authority}`);
+        return undefined;
+      }
+      return this.remountFromWorkspaceFolder(folder.uri, authority);
+    }
+
+    return this.openQuietMount({
+      authority: meta.authority,
+      host: meta.host,
+      port: meta.port,
+      remoteRoot: meta.remoteRoot,
+      deviceName: meta.deviceName,
+    });
+  }
+
+  /**
+   * On activation: reconnect any maixsftp workspace folders / persisted mounts.
+   */
+  async restorePersistedMounts(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+    const fromState = this.readPersistedMounts();
+    const fromWs = (vscode.workspace.workspaceFolders ?? [])
+      .filter((f) => f.uri.scheme === SftpFileSystemProvider.scheme)
+      .map((f) => f.uri.authority)
+      .filter(Boolean);
+
+    const authorities = new Set<string>([
+      ...fromState.map((m) => m.authority),
+      ...fromWs,
+    ]);
+    if (!authorities.size) {
+      return;
+    }
+    log(
+      `[SFTP] restore mounts: ${[...authorities].join(", ") || "(none)"}`
+    );
+
+    for (const authority of authorities) {
+      try {
+        const mount = await this.remountAuthority(authority);
+        if (mount) {
+          log(
+            `[SFTP] restored ${authority} host=${mount.host} root=${mount.remoteRoot}`
+          );
+        } else {
+          warnRestore(authority);
+        }
+      } catch (e) {
+        error(`[SFTP] restore ${authority}: ${formatUnknown(e)}`);
+      }
+    }
+    this.fs.notifyExplorerRefresh(true);
+    this.decorations.refresh();
+    void vscode.commands.executeCommand(
+      "workbench.files.action.refreshFilesExplorer"
+    );
+  }
+
+  private async remountFromWorkspaceFolder(
+    folderUri: vscode.Uri,
+    authority: string
+  ): Promise<SftpMount | undefined> {
+    // authority is usually device name; host may be IP if that was used
+    // Workspace folder only knows authority; host may equal authority (IP or mDNS name)
+    const hostGuess = authority;
+    const remoteRoot = normalizeRoot(folderUri.path || "/");
+    const cfg = vscode.workspace.getConfiguration(ConfigSection);
+    const port = cfg.get<number>(ConfigKeys.sshPort, 22);
+    return this.openQuietMount({
+      authority,
+      host: hostGuess,
+      port,
+      remoteRoot,
+      deviceName: authority,
+    });
+  }
+
+  private async openQuietMount(meta: {
+    authority: string;
+    host: string;
+    port: number;
+    remoteRoot: string;
+    deviceName?: string;
+  }): Promise<SftpMount | undefined> {
+    const cfg = vscode.workspace.getConfiguration(ConfigSection);
+    const timeoutMs = cfg.get<number>(ConfigKeys.sshConnectTimeoutMs, 10000);
+    const credentials = readSshCredentials(cfg);
+    if (!credentials.length) {
+      log("[SFTP] remount skipped: no credentials");
+      return undefined;
+    }
+    const readOnly = cfg.get<boolean>(ConfigKeys.sftpReadOnly, false);
+    const hidePatterns = cfg.get<string[]>(ConfigKeys.sftpHidePatterns, []) || [];
+    const showFiltered = cfg.get<boolean>(ConfigKeys.sftpShowFiltered, false);
+    const filter = compileSftpHidePatterns(hidePatterns);
+
+    let host = (meta.host || "").trim();
+    // If host looks like a hostname from mDNS name, try connected devices later via open()
+    if (!host) {
+      return undefined;
+    }
+
+    const session = new SftpSession();
+    try {
+      await session.ensureConnected({
+        host,
+        port: meta.port,
+        timeoutMs,
+        credentials,
+        onProgress: (line) => log(`[SFTP] ${line}`),
+      });
+      let resolved = meta.remoteRoot || "/";
+      try {
+        resolved = await session.realpath(resolved);
+      } catch {
+        // keep configured root
+      }
+      const mount: SftpMount = {
+        authority: meta.authority,
+        host,
+        port: meta.port,
+        timeoutMs,
+        credentials,
+        remoteRoot: resolved,
+        deviceName: meta.deviceName,
+        session,
+        filter,
+        readOnly,
+        showFiltered,
+      };
+      this.fs.registerMount(mount);
+      this.persistMounts();
+      // Ensure workspace folder still present
+      await this.ensureWorkspaceFolder(
+        buildSftpUri(meta.authority, resolved),
+        `MaixSFTP: ${meta.deviceName || host}`
+      );
+      return mount;
+    } catch (e) {
+      session.dispose();
+      // If authority was device name but host wrong, try open() with host only fails —
+      // leave for tryAutoOpenFromConnected when device reconnects.
+      log(
+        `[SFTP] openQuietMount failed ${meta.authority}@${host}: ${formatUnknown(e)}`
+      );
+      return undefined;
+    }
+  }
+
+  private persistMounts(): void {
+    const list: PersistedSftpMount[] = this.fs.listMounts().map((m) => ({
+      authority: m.authority,
+      host: m.host,
+      port: m.port,
+      remoteRoot: m.remoteRoot,
+      deviceName: m.deviceName,
+    }));
+    // merge workspace-only authorities already in state if still in folders
+    void this.context.globalState.update(SftpMountsStateKey, list);
+  }
+
+  private readPersistedMounts(): PersistedSftpMount[] {
+    const raw = this.context.globalState.get<unknown>(SftpMountsStateKey, []);
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const out: PersistedSftpMount[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const o = item as Record<string, unknown>;
+      const authority =
+        typeof o.authority === "string" ? o.authority.trim() : "";
+      const host = typeof o.host === "string" ? o.host.trim() : "";
+      if (!authority || !host) {
+        continue;
+      }
+      out.push({
+        authority,
+        host,
+        port: typeof o.port === "number" ? o.port : 22,
+        remoteRoot:
+          typeof o.remoteRoot === "string" ? o.remoteRoot : "/",
+        deviceName:
+          typeof o.deviceName === "string" ? o.deviceName : undefined,
+      });
+    }
+    return out;
+  }
+
+  private findPersistedMount(
+    authority: string
+  ): PersistedSftpMount | undefined {
+    return this.readPersistedMounts().find((m) => m.authority === authority);
+  }
+
   dispose(): void {
     this.disposed = true;
+    this.persistMounts();
     this.fs.dispose();
   }
 
@@ -551,5 +794,11 @@ function sanitizeAuthority(s: string): string {
       .replace(/\s+/g, "-")
       .replace(/[^a-zA-Z0-9._\-:]/g, "_")
       .slice(0, 64) || "device"
+  );
+}
+
+function warnRestore(authority: string): void {
+  log(
+    `[SFTP] could not restore mount ${authority} (device offline or credentials?). Folder stays until reconnect.`
   );
 }
