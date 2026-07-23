@@ -16,12 +16,21 @@ export interface ImageViewerDeps {
   onConnectionListChanged?: (listener: () => void) => () => void;
 }
 
+/** Either editor WebviewPanel or sidebar WebviewView. */
+interface ViewerSurface {
+  webview: vscode.Webview;
+  kind: "panel" | "view";
+}
+
 /**
- * Webview panel for live preview via local ImageService transports:
- * HTTP poll, WebSocket push, MJPEG stream.
+ * Live preview via local ImageService transports (HTTP / WS / MJPEG).
+ * Surfaces: secondary-sidebar WebviewView + optional editor WebviewPanel.
  */
-export class ImageViewer {
+export class ImageViewer implements vscode.WebviewViewProvider {
+  public static readonly viewId = "maixcode-image";
+
   private imagePanel: vscode.WebviewPanel | undefined;
+  private imageView: vscode.WebviewView | undefined;
   private devicePoll: NodeJS.Timeout | undefined;
   private unsubConnection: (() => void) | undefined;
   private lastDeviceJson = "";
@@ -30,6 +39,11 @@ export class ImageViewer {
     private readonly context: vscode.ExtensionContext,
     private readonly deps: ImageViewerDeps
   ) {
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(ImageViewer.viewId, this, {
+        webviewOptions: { retainContextWhenHidden: true },
+      })
+    );
     context.subscriptions.push({
       dispose: () => this.dispose(),
     });
@@ -39,8 +53,43 @@ export class ImageViewer {
     this.stopDeviceUpdates();
     this.imagePanel?.dispose();
     this.imagePanel = undefined;
+    this.imageView = undefined;
   }
 
+  public resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    _context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken
+  ): void {
+    this.imageView = webviewView;
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.context.extensionUri, "media", "image_viewer"),
+      ],
+    };
+    webviewView.webview.html = this.getHtml(webviewView.webview, "view");
+    const sub = webviewView.webview.onDidReceiveMessage((message) => {
+      void this.onMessage(message, webviewView.webview);
+    });
+    webviewView.onDidDispose(() => {
+      sub.dispose();
+      if (this.imageView === webviewView) {
+        this.imageView = undefined;
+      }
+      if (!this.hasSurface()) {
+        this.stopDeviceUpdates();
+      }
+    });
+    this.startDeviceUpdates();
+  }
+
+  /** Focus the secondary-sidebar Image view. */
+  public async showSidebar(): Promise<void> {
+    await vscode.commands.executeCommand(`${ImageViewer.viewId}.focus`);
+  }
+
+  /** Open (or reveal) a larger editor WebviewPanel. */
   public async showWindow(): Promise<void> {
     if (!this.imagePanel) {
       this.imagePanel = vscode.window.createWebviewPanel(
@@ -50,37 +99,61 @@ export class ImageViewer {
         {
           enableScripts: true,
           localResourceRoots: [
-            vscode.Uri.joinPath(this.context.extensionUri, "media", "image_viewer"),
+            vscode.Uri.joinPath(
+              this.context.extensionUri,
+              "media",
+              "image_viewer"
+            ),
           ],
           retainContextWhenHidden: true,
         }
       );
 
       this.imagePanel.onDidDispose(() => {
-        this.stopDeviceUpdates();
         this.imagePanel = undefined;
+        if (!this.hasSurface()) {
+          this.stopDeviceUpdates();
+        }
       });
 
       this.imagePanel.webview.onDidReceiveMessage((message) => {
-        void this.onMessage(message);
+        void this.onMessage(message, this.imagePanel!.webview);
       });
 
-      this.imagePanel.webview.html = this.getHtml(this.imagePanel.webview);
+      this.imagePanel.webview.html = this.getHtml(this.imagePanel.webview, "panel");
       this.startDeviceUpdates();
     } else {
       this.imagePanel.reveal(vscode.ViewColumn.Beside);
-      this.postInit();
+      this.postInitTo(this.imagePanel.webview);
     }
   }
 
+  private hasSurface(): boolean {
+    return !!(this.imagePanel || this.imageView);
+  }
+
+  private surfaces(): ViewerSurface[] {
+    const out: ViewerSurface[] = [];
+    if (this.imageView) {
+      out.push({ webview: this.imageView.webview, kind: "view" });
+    }
+    if (this.imagePanel) {
+      out.push({ webview: this.imagePanel.webview, kind: "panel" });
+    }
+    return out;
+  }
+
   private startDeviceUpdates(): void {
-    this.stopDeviceUpdates();
+    if (this.devicePoll || this.unsubConnection) {
+      // already running; still push once for new surface
+      this.postDeviceList();
+      return;
+    }
     const push = () => this.postDeviceList();
     push();
     if (this.deps.onConnectionListChanged) {
       this.unsubConnection = this.deps.onConnectionListChanged(push);
     }
-    // fallback poll (covers hosts that only refresh sidebar)
     this.devicePoll = setInterval(push, 2000);
   }
 
@@ -91,6 +164,7 @@ export class ImageViewer {
     }
     this.unsubConnection?.();
     this.unsubConnection = undefined;
+    this.lastDeviceJson = "";
   }
 
   private devicesPayload(): ImageViewerDevice[] {
@@ -98,32 +172,27 @@ export class ImageViewer {
   }
 
   private postDeviceList(): void {
-    if (!this.imagePanel) {
-      return;
-    }
     const devices = this.devicesPayload();
     const json = JSON.stringify(devices);
     if (json === this.lastDeviceJson) {
       return;
     }
     this.lastDeviceJson = json;
-    this.imagePanel.webview.postMessage({
-      type: "updateDeviceList",
-      devices,
-    });
+    for (const s of this.surfaces()) {
+      void s.webview.postMessage({
+        type: "updateDeviceList",
+        devices,
+      });
+    }
   }
 
-  private postInit(): void {
-    if (!this.imagePanel) {
-      return;
-    }
+  private postInitTo(webview: vscode.Webview): void {
     const svc = this.deps.imageService;
     const cfg = vscode.workspace.getConfiguration("maixcode");
     const defaultMode = cfg.get<string>("imageViewerDefaultMode", "websocket");
     const httpInterval = cfg.get<number>("imageHttpIntervalMs", 33);
     const autoStart = cfg.get<boolean>("imageViewerAutoStart", true);
-    this.lastDeviceJson = "";
-    this.imagePanel.webview.postMessage({
+    void webview.postMessage({
       type: "init",
       httpBase: svc.getHttpBaseUrl(),
       wsUrl: svc.getWsUrl(),
@@ -137,18 +206,24 @@ export class ImageViewer {
     });
   }
 
-  private async onMessage(message: {
-    type?: string;
-    key?: string;
-    mode?: string;
-    dataUrl?: string;
-  }): Promise<void> {
+  private async onMessage(
+    message: {
+      type?: string;
+      key?: string;
+      mode?: string;
+      dataUrl?: string;
+    },
+    webview: vscode.Webview
+  ): Promise<void> {
     if (!message?.type) {
       return;
     }
     switch (message.type) {
       case "ready":
-        void this.deps.imageService.whenReady().then(() => this.postInit());
+        void this.deps.imageService.whenReady().then(() => {
+          this.lastDeviceJson = "";
+          this.postInitTo(webview);
+        });
         break;
       case "deviceSelected":
         log(`Image viewer selected device key=${message.key}`);
@@ -164,6 +239,12 @@ export class ImageViewer {
         break;
       case "screenshotData":
         await this.saveScreenshotDataUrl(message.key, message.dataUrl);
+        break;
+      case "openSidebar":
+        await this.showSidebar();
+        break;
+      case "openPanel":
+        await this.showWindow();
         break;
       default:
         break;
@@ -221,7 +302,10 @@ export class ImageViewer {
     vscode.window.showInformationMessage(`Saved screenshot to ${uri.fsPath}`);
   }
 
-  private getHtml(webview: vscode.Webview): string {
+  private getHtml(
+    webview: vscode.Webview,
+    surface: "panel" | "view"
+  ): string {
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(
         this.context.extensionUri,
@@ -268,6 +352,11 @@ export class ImageViewer {
     <button type="button" class="btn primary" id="startBtn" disabled>Start</button>
     <button type="button" class="btn" id="stopBtn" disabled>Stop</button>
     <button type="button" class="btn" id="screenshotBtn" disabled title="Screenshot">Shot</button>
+    ${
+      surface === "panel"
+        ? `<button type="button" class="btn" id="openSidebarBtn" title="Open in secondary sidebar">Sidebar</button>`
+        : `<button type="button" class="btn" id="openPanelBtn" title="Open in editor panel">Editor</button>`
+    }
     <input type="number" id="intervalInput" value="33" min="16" max="2000" step="1" title="HTTP poll interval (ms)" />
     <label class="chk" title="Show overlay"><input type="checkbox" id="overlayToggle" checked /> HUD</label>
     <label class="chk" title="Auto reconnect"><input type="checkbox" id="autoReconnect" checked /> Auto</label>

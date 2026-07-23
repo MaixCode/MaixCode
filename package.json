@@ -30,11 +30,13 @@
           "id": "maixcode-mainview",
           "title": "MaixCode",
           "icon": "$(circuit-board)"
-        },
+        }
+      ],
+      "secondarySidebar": [
         {
-          "id": "maixcode-toolview",
-          "title": "MaixTool",
-          "icon": "$(tools)"
+          "id": "maixcode-secondary",
+          "title": "MaixCode",
+          "icon": "$(device-camera)"
         }
       ]
     },
@@ -49,6 +51,15 @@
           "id": "maixcode-example",
           "name": "Example",
           "icon": "$(folder-library)"
+        }
+      ],
+      "maixcode-secondary": [
+        {
+          "type": "webview",
+          "id": "maixcode-image",
+          "name": "Image",
+          "icon": "$(device-camera)",
+          "visibility": "visible"
         }
       ]
     },
@@ -113,6 +124,19 @@
       {
         "command": "maixcode.openImageViewer",
         "title": "Open Image Viewer",
+        "icon": "$(device-camera)",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.openImageViewerPanel",
+        "title": "Open Image Viewer in Editor",
+        "icon": "$(window)",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.openImageViewerSidebar",
+        "title": "Open Image Viewer in Sidebar",
+        "icon": "$(layout-sidebar-right)",
         "category": "MaixCode"
       },
       {
@@ -227,6 +251,16 @@
           "command": "maixcode.installRuntime",
           "when": "view == maixcode-devices",
           "group": "navigation@6"
+        },
+        {
+          "command": "maixcode.openImageViewer",
+          "when": "view == maixcode-devices",
+          "group": "navigation@7"
+        },
+        {
+          "command": "maixcode.openImageViewerPanel",
+          "when": "view == maixcode-image",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -277,6 +311,11 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "maixcode.openImageViewerSidebar",
+          "when": "activeWebviewPanelId == 'maixcodeImagePreview'",
+          "group": "navigation"
+        },
         {
           "command": "maixcode.runOnDevice",
           "when": "resourceLangId == python",

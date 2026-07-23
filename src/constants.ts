@@ -25,6 +25,8 @@ export namespace Commands {
 
   // Image Viewer Commands
   export const openImageViewer = "maixcode.openImageViewer";
+  export const openImageViewerPanel = "maixcode.openImageViewerPanel";
+  export const openImageViewerSidebar = "maixcode.openImageViewerSidebar";
 
   // Run on device (starts maixpy debug session for current file)
   export const runOnDevice = "maixcode.runOnDevice";

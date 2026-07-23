@@ -90,7 +90,19 @@ export function initCommands(context: vscode.ExtensionContext) {
     {
       name: Commands.openImageViewer,
       func: () => {
-        Instance.instance.imageViewer.showWindow();
+        void Instance.instance.imageViewer.showSidebar();
+      },
+    },
+    {
+      name: Commands.openImageViewerSidebar,
+      func: () => {
+        void Instance.instance.imageViewer.showSidebar();
+      },
+    },
+    {
+      name: Commands.openImageViewerPanel,
+      func: () => {
+        void Instance.instance.imageViewer.showWindow();
       },
     },
     {

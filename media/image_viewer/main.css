@@ -159,3 +159,12 @@ body {
 @media (max-width: 640px) {
   .metrics-inline { margin-left: 0; width: 100%; }
 }
+
+/* Secondary sidebar / narrow view */
+@media (max-width: 420px) {
+  .toolbar { gap: 4px 6px; padding: 4px 6px; }
+  #deviceSelect { min-width: 100%; max-width: none; flex: 1 1 100%; }
+  .metrics-inline { margin-left: 0; width: 100%; flex-wrap: wrap; }
+  .footer { max-height: 40px; }
+  .log-section { height: 40px; }
+}

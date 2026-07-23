@@ -14,6 +14,8 @@
   const startBtn = document.getElementById('startBtn');
   const stopBtn = document.getElementById('stopBtn');
   const screenshotBtn = document.getElementById('screenshotBtn');
+  const openSidebarBtn = document.getElementById('openSidebarBtn');
+  const openPanelBtn = document.getElementById('openPanelBtn');
   const intervalInput = document.getElementById('intervalInput');
   const overlayToggle = document.getElementById('overlayToggle');
   const autoReconnect = document.getElementById('autoReconnect');
@@ -547,6 +549,16 @@
     stopStream();
   });
   screenshotBtn.addEventListener('click', takeScreenshot);
+  if (openSidebarBtn) {
+    openSidebarBtn.addEventListener('click', function () {
+      vscode.postMessage({ type: 'openSidebar' });
+    });
+  }
+  if (openPanelBtn) {
+    openPanelBtn.addEventListener('click', function () {
+      vscode.postMessage({ type: 'openPanel' });
+    });
+  }
   overlayToggle.addEventListener('change', updateOverlay);
   streamModes.forEach(function (mode) {
     mode.addEventListener('click', function () {
