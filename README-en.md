@@ -135,12 +135,12 @@ Project mode:
 ## Development
 
 ```bash
-pnpm install          # install dependencies
-pnpm run compile      # webpack → dist/extension.js
-pnpm run watch        # webpack watch (F5 debug)
-pnpm run lint         # ESLint
-pnpm run test         # run tests
-pnpm run package:vsix # build VSIX
+yarn install          # install dependencies
+yarn run compile      # webpack → dist/extension.js
+yarn run watch        # webpack watch (F5 debug)
+yarn run lint         # ESLint
+yarn run test         # run tests
+yarn run package:vsix # build VSIX
 ```
 
 F5 launches the Extension Development Host. See [AGENTS.md](AGENTS.md) for architecture details.

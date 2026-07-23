@@ -754,13 +754,13 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "pnpm run package",
+    "vscode:prepublish": "yarn run package",
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
     "package:vsix": "vsce package --no-dependencies"
@@ -789,11 +789,9 @@
     "@octokit/rest": "^21.0.1",
     "@vscode/debugadapter": "^1.66.0",
     "@vscode/debugprotocol": "^1.68.0",
-    "@vscode/webview-ui-toolkit": "^1.4.0",
     "axios": "^1.7.7",
     "dayjs": "^1.11.12",
     "express": "^4.21.2",
-    "fabric": "^6.5.3",
     "jszip": "^3.10.1",
     "multicast-dns": "^7.2.5",
     "sharp": "^0.33.5",

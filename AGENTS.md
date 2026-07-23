@@ -4,31 +4,27 @@ VS Code extension for MaixCAM / MaixPy (discover devices, connect, run/debug cod
 
 ## Package manager
 
-- Use **pnpm** (`pnpm-lock.yaml`, `pnpm-workspace.yaml`). Yarn lock/config are being removed.
-- `package.json` scripts may still say `yarn run ...` in `pretest` / `vscode:prepublish`; prefer `pnpm run <script>` when invoking by hand.
-- Native deps: `sharp` (and `canvas` via transitive) need builds; `pnpm-workspace.yaml` sets `allowBuilds` for both. Fresh install may compile natives.
-- `pnpm-workspace.yaml` must include `packages: ['.']` (single-package workspace) so `pnpm store path` / Actions `cache: pnpm` work; file also holds `allowBuilds` only otherwise breaks with `packages field missing or empty`.
+- Use **Yarn classic** (`yarn.lock` v1). Prefer `yarn` / `yarn run <script>` (scripts already use `yarn run` in `pretest` / `vscode:prepublish`).
+- Native deps: `sharp`, `ssh2`, `cpu-features` (and `canvas` via transitive) may compile on install; first install can take longer.
 
 ```bash
-pnpm install
-pnpm run compile          # webpack -> dist/extension.js
-pnpm run watch            # default F5 preLaunch task
-pnpm run package          # production webpack (vscode:prepublish)
-pnpm run lint             # eslint src --ext ts
-pnpm run compile-tests    # tsc -> out/ (tests only; extension itself is webpack)
-pnpm run test             # pretest = compile-tests + compile + lint, then vscode-test
+yarn install
+yarn run compile          # webpack -> dist/extension.js
+yarn run watch            # default F5 preLaunch task
+yarn run package          # production webpack (vscode:prepublish)
+yarn run lint             # eslint src --ext ts
+yarn run compile-tests    # tsc -> out/ (tests only; extension itself is webpack)
+yarn run test             # pretest = compile-tests + compile + lint, then vscode-test
 ```
-
-Single-package workspace (`packages: ['.']`); not a multi-package monorepo. Workspace file also configures native `allowBuilds`.
 
 ## CI (GitHub Actions)
 
 - Workflow: `.github/workflows/build-vsix.yml` (`Build VSIX`).
 - Triggers: `push` / `pull_request` to `main` or `master`, plus `workflow_dispatch`.
-- Runner: Node **22** + pnpm 9 (`actions/setup-node` `cache: pnpm` needs valid workspace `packages`).
-- Steps: `pnpm install --frozen-lockfile` → `pnpm run lint` → `pnpm run package:vsix` (`vsce package --no-dependencies`; `vscode:prepublish` runs production webpack first).
+- Runner: Node **22** + Yarn classic (`actions/setup-node` `cache: yarn` from `yarn.lock`).
+- Steps: `yarn install --frozen-lockfile` → `yarn run lint` → `yarn run package:vsix` (`vsce package --no-dependencies`; `vscode:prepublish` runs production webpack first).
 - Artifact: uploads `*.vsix` as **`maixcode-vsix`** (retention 30 days). Download from the Actions run summary.
-- Local equivalent: `pnpm run package:vsix` → `maixcode-<version>.vsix` (gitignored).
+- Local equivalent: `yarn run package:vsix` → `maixcode-<version>.vsix` (gitignored).
 
 
 ## Layout
@@ -71,7 +67,7 @@ Webpack: single Node target bundle `src/extension.ts` → `dist/extension.js`; `
 - **Project package / deploy**: `ProjectPackageService` + `ProjectDeployService` (`src/service/project_*`). `app.yaml` (id/name/version/author/desc/icon/files). Commands: `maixcode.configureProject` (opens visual `AppConfigEditor` WebviewPanel; writes `app.yaml`), `packageApp`, `installApp`, `packageAndInstallApp`, `runProject`. Blocking QuickInput `configureInteractive` still used when package/install needs config mid-flow. Package progress toast dismisses before result dialogs (dialogs not inside `withProgress`). Package → `dist/maix-{id}-v{version}.zip` (single file → zip `main.py`; multi keeps paths; always include `app.yaml`+icon). Install → WS `InstallApp(16)` zip bytes; progress via `InstallAppAck` / `installApp` events. **Run Project** → packages folder then `vscode.debug.startDebugging` with `type: maixpy`, `mode: "project"`, `projectDir`, optional `projectZip`; adapter uses `MaixPyRuntime.startProject` / `RunSession.startProject` / WS `RunProject(18)`. Requires `main.py`; size warn >5MB block >30MB. UI: Device sidebar action rows + view title icons; Explorer folder context.
 - **App config editor** (`ui/provider/app_config_editor.ts` + `media/app_config_editor/*`): editor `WebviewPanel` (`viewType` `maixcodeAppConfig`) for `app.yaml` (id/name/version/author/desc/icon/files). Command `maixcode.configureProject` → `AppConfigEditor.show(hint)`. Host loads/saves via `ProjectPackageService`; file checklist from `listProjectFiles`; icon browse (copy external → `app.png`); watches `app.yaml`/`app.yml` for external edits (reload form); form changes debounce auto-save; icons written 1:1 via `sharp` cover crop to `app.png`; Ctrl/Cmd+S forces save + toast. No `Instance` import; inject `packageService`.
 - **Install Runtime**: `RuntimeService` (`src/service/runtime_service.ts`). Command `maixcode.installRuntime`. Flow (MaixVision-compatible): DeviceInfo JSON includes `device`, `runtime`, `apiKey`, `sysVer`, `maixpyVer` → GET `https://maixvision.sipeed.com/api/v1/devices/encryption/version` (headers `token: MaixVision2024`, params `uid=apiKey`, `os`, `maixpy`) → if newer (or reinstall) GET `/v1/devices/encryption` (`uid`, `device` mapped via `MaixCAM2→maixcam2`, `MaixCAM/MaixCAM-Pro→maixcam`, `version`) as `application/octet-stream` → payload `version + NUL + firmware` via WS `UpdateRuntime(19)`; progress `UpdateRuntimeAck(20)` (`content[0]`=progress, `content[1]===0` success); at 100% re-query `DeviceInfo`. UI: Device tree action **Install Runtime** + view title icon; shows Device/Runtime lines under Current Device Info.
-- **SSH terminal**: `SshTerminalService` (`src/service/ssh/`) uses `ssh2` + VS Code `Pseudoterminal` (no system `ssh`). Command `maixcode.openDeviceTerminal`. Credentials: `maixcode.sshCredentials` (array, tried in order; auth fail → next; network fail → stop). Port/timeout: `maixcode.sshPort`, `maixcode.sshConnectTimeoutMs`. Multi-session: each open creates a new terminal. UI: Device tree Open SSH Terminal under Current Device Info + inline on `maixcode-deviceIp`. Host key verifier accepts all (dev convenience). Webpack externals: `ssh2`, `cpu-features`. `pnpm-workspace` allowBuilds for `ssh2` / `cpu-features`.
+- **SSH terminal**: `SshTerminalService` (`src/service/ssh/`) uses `ssh2` + VS Code `Pseudoterminal` (no system `ssh`). Command `maixcode.openDeviceTerminal`. Credentials: `maixcode.sshCredentials` (array, tried in order; auth fail → next; network fail → stop). Port/timeout: `maixcode.sshPort`, `maixcode.sshConnectTimeoutMs`. Multi-session: each open creates a new terminal. UI: Device tree Open SSH Terminal under Current Device Info + inline on `maixcode-deviceIp`. Host key verifier accepts all (dev convenience). Webpack externals: `ssh2`, `cpu-features`. Native modules may rebuild on install.
 - **SFTP virtual FS**: `SftpService` + `SftpFileSystemProvider` (`maixsftp://`). Separate SSH connection from shell (`SftpSession`). Command `maixcode.openDeviceSftp` adds a workspace folder (`MaixSFTP: <name>`) and reveals it in Explorer. URI: `maixsftp://<authority>/<remote/abs/path>` (authority = sanitized device name or IP). Config: `maixcode.sftpBookmarks` (first-level folders: name/remotePath/order; default Root `/` + Home `/root`), legacy `sftpRoot`, `maixcode.sftpReadOnly`, `maixcode.sftpHidePatterns` (glob or `/regex/`; `readDirectory`), `maixcode.sftpShowFiltered` (show filtered with `H` badge via `SftpFileDecorationProvider`). Explorer context on `resourceScheme == maixsftp`: Refresh (`maixcode.sftpRefresh`), Filter / Unfilter / Toggle Show Filtered / Edit Patterns. Filter adds full remote path to settings (Global). Shared credentials: `credentials.ts`. UI: Device Info + inline `deviceIp`. Auto-open: `autoOpenSftp` on connection list change (quiet, dedupe). Reload restore: persist mounts in `globalState` (`SftpMountsStateKey`); `ensureMount` lazy-remounts when Explorer hits `maixsftp://` with empty memory. Provider: full FS ops; symlink-aware (`lstat`/`readlink`/`statPreferFollow`, dir listing via `realpath` for link dirs like `/sbin`); watch no-op.
 - **Images**: device frames → `FrameStore` (`frame_store.ts`) via `FrameSink.setImage`; key = device **name** (fallback ip), same as `DeviceService` `onFrame`.
 - **ImageService** (`image_service.ts`): local HTTP on `127.0.0.1` (port `maixcode.imageServicePort`, default 9090, fallback ephemeral). Shared store + three transports:
@@ -135,7 +131,7 @@ Webpack: single Node target bundle `src/extension.ts` → `dist/extension.js`; `
 
 - Specs: `src/test/**/*.test.ts` → compiled to `out/test/**/*.test.js` (see `.vscode-test.mjs`).
 - Current suite is a placeholder assert sample; no device/integration harness.
-- `pnpm run test` needs a desktop VS Code download via `@vscode/test-electron` (not pure headless unit tests).
+- `yarn run test` needs a desktop VS Code download via `@vscode/test-electron` (not pure headless unit tests).
 
 ## Documentation maintenance (agents)
 

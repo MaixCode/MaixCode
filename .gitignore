@@ -133,3 +133,6 @@ dist
 # build output
 dist/
 *.vsix
+
+# Agent
+.commandcode/

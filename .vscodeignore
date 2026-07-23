@@ -21,7 +21,11 @@ AGENTS.md
 # Sources & tests (bundled into dist/)
 src/**
 out/**
-node_modules/**
+node_modules/.bin
+node_modules/.cache
+node_modules/@types
+node_modules/*/test
+node_modules/*/example
 **/*.ts
 **/*.map
 **/*.test.js
