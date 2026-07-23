@@ -10,12 +10,29 @@ import { error, formatUnknown, log, showLog } from "../logger";
 import { Instance } from "../instance";
 import { FileAccessor, MaixPyRuntime } from "./runtime";
 import { Status } from "../model/status";
+import { DeviceService } from "../service/device_service";
+import {
+  ProjectPackageService,
+  RUN_PROJECT_BLOCK_MB,
+  RUN_PROJECT_WARN_MB,
+} from "../service/project_package_service";
+import * as fs from "fs";
+import * as path from "path";
 
 interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
-  /** An absolute path to the "program" to debug. */
+  /** Absolute path to the Python file, or project root when mode is "project". */
   program: string;
   /** If true, the launch request should launch the program without enabling debugging. */
   noDebug?: boolean;
+  /**
+   * "file" (default): run program source via Run.
+   * "project": RunProject zip (projectZip or package projectDir).
+   */
+  mode?: "file" | "project";
+  /** Project root for Run Project (app with main.py). */
+  projectDir?: string;
+  /** Pre-built zip path for Run Project (tmp zip from ProjectPackageService). */
+  projectZip?: string;
 }
 
 export class MaixPyDebugSession extends DebugSession {
@@ -176,19 +193,24 @@ export class MaixPyDebugSession extends DebugSession {
       this._launched = true;
       this.sendResponse(response);
       log("[MaixPyDebugSession] launchResponse sent, starting runtime...");
-      this.consoleLog(`Starting ${args.program} on ${device.device?.ip}...`);
 
-      void this._runtime
-        .start(args.program, device)
-        .then(() => {
-          log("[MaixPyDebugSession] runtime.start() promise resolved");
-        })
-        .catch((e) => {
-          const msg = `runtime.start failed: ${formatUnknown(e)}`;
-          error(msg, true);
-          this.consoleError(msg);
-          this.sendEvent(new TerminatedEvent());
-        });
+      const mode = args.mode === "project" ? "project" : "file";
+      if (mode === "project") {
+        void this.launchProject(args, device);
+      } else {
+        this.consoleLog(`Starting ${args.program} on ${device.device?.ip}...`);
+        void this._runtime
+          .start(args.program, device)
+          .then(() => {
+            log("[MaixPyDebugSession] runtime.start() promise resolved");
+          })
+          .catch((e) => {
+            const msg = `runtime.start failed: ${formatUnknown(e)}`;
+            error(msg, true);
+            this.consoleError(msg);
+            this.sendEvent(new TerminatedEvent());
+          });
+      }
     } catch (e) {
       const msg = `launchRequest exception: ${formatUnknown(e)}`;
       error(msg, true);
@@ -224,6 +246,83 @@ export class MaixPyDebugSession extends DebugSession {
     // VS Code may send disconnect without waiting for TerminatedEvent on first click;
     // always end the debug session after stop.
     void this.shutdownDebug("disconnect");
+  }
+
+
+  private async launchProject(
+    args: ILaunchRequestArguments,
+    device: DeviceService
+  ): Promise<void> {
+    try {
+      const projectDir = args.projectDir || args.program;
+      if (!projectDir || !fs.existsSync(projectDir)) {
+        const msg = `Project directory not found: ${projectDir || "(empty)"}`;
+        error(msg, true);
+        this.consoleError(msg);
+        this.sendEvent(new TerminatedEvent());
+        return;
+      }
+
+      let zipPath: string | undefined = args.projectZip;
+      if (!zipPath || !fs.existsSync(zipPath)) {
+        const packages = new ProjectPackageService();
+        const mainOk = await packages.ensureMainPy(projectDir);
+        if (!mainOk) {
+          const msg = `main.py not found in ${projectDir}`;
+          error(msg, true);
+          this.consoleError(msg);
+          this.sendEvent(new TerminatedEvent());
+          return;
+        }
+        this.consoleLog(`Packaging project ${projectDir}...`);
+        const packed = await packages.packageFolderForRun(projectDir);
+        if (!packed.ok) {
+          const msg = `Package project failed: ${packed.message}`;
+          error(msg, true);
+          this.consoleError(msg);
+          this.sendEvent(new TerminatedEvent());
+          return;
+        }
+        const sizeMb = packed.info.size / 1024 / 1024;
+        if (sizeMb > RUN_PROJECT_BLOCK_MB) {
+          const msg = `Project zip is ${sizeMb.toFixed(1)} MB (limit ${RUN_PROJECT_BLOCK_MB} MB)`;
+          error(msg, true);
+          this.consoleError(msg);
+          this.sendEvent(new TerminatedEvent());
+          return;
+        }
+        if (sizeMb > RUN_PROJECT_WARN_MB) {
+          this.consoleLog(
+            `Warning: project zip is ${sizeMb.toFixed(1)} MB (over ${RUN_PROJECT_WARN_MB} MB)`
+          );
+        }
+        zipPath = packed.info.path;
+      }
+
+      if (!zipPath) {
+        const msg = "Project zip path is missing";
+        error(msg, true);
+        this.consoleError(msg);
+        this.sendEvent(new TerminatedEvent());
+        return;
+      }
+
+      const zipData = await fs.promises.readFile(zipPath);
+      const label = `${path.basename(projectDir)}.zip`;
+      this.consoleLog(
+        `Starting project ${label} (${zipData.length} bytes) on ${device.device?.ip}...`
+      );
+      log(
+        `[MaixPyDebugSession] launchProject zip=${zipPath} bytes=${zipData.length}`
+      );
+      await this._runtime.startProject(zipData, device, label);
+      log("[MaixPyDebugSession] runtime.startProject() promise resolved");
+    } catch (e) {
+      const msg = `runtime.startProject failed: ${formatUnknown(e)}`;
+      error(msg, true);
+      this.consoleError(msg);
+      this.sendEvent(new TerminatedEvent());
+    }
   }
 
   private _shuttingDown = false;

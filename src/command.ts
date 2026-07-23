@@ -6,6 +6,13 @@ import { error, formatUnknown, log, showLog } from "./logger";
 import { resolveSourceForRun } from "./debugger/source_resolve";
 
 export function initCommands(context: vscode.ExtensionContext) {
+  const projectDirHint = (uri?: vscode.Uri): string | undefined => {
+    if (uri?.scheme === "file") {
+      return uri.fsPath;
+    }
+    return undefined;
+  };
+
   const commandList = [
     {
       name: Commands.connectDevice,
@@ -219,6 +226,54 @@ export function initCommands(context: vscode.ExtensionContext) {
         } else {
           Instance.instance.sftpService.refresh();
         }
+      },
+    },
+
+    {
+      name: Commands.configureProject,
+      func: async (uri?: vscode.Uri) => {
+        await Instance.instance.projectDeployService.configureProject(
+          projectDirHint(uri)
+        );
+      },
+    },
+    {
+      name: Commands.packageApp,
+      func: async (uri?: vscode.Uri) => {
+        await Instance.instance.projectDeployService.packageProject(
+          projectDirHint(uri)
+        );
+      },
+    },
+    {
+      name: Commands.installApp,
+      func: async (uri?: vscode.Uri) => {
+        await Instance.instance.projectDeployService.installToDevice(
+          projectDirHint(uri)
+        );
+      },
+    },
+    {
+      name: Commands.packageAndInstallApp,
+      func: async (uri?: vscode.Uri) => {
+        await Instance.instance.projectDeployService.packageAndInstall(
+          projectDirHint(uri)
+        );
+      },
+    },
+    {
+      name: Commands.runProject,
+      func: async (uri?: vscode.Uri) => {
+        await Instance.instance.projectDeployService.runProject(
+          projectDirHint(uri)
+        );
+      },
+    },
+
+    {
+      name: Commands.installRuntime,
+      func: async () => {
+        await Instance.instance.runtimeService.installOrUpdateRuntime();
       },
     },
 

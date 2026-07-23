@@ -55,6 +55,55 @@ export class RunSession {
       `[RunSession] start codeLength=${code.length} isConnected=${this.transport.isConnected} isRunning=${this.transport.isRunning}`
     );
 
+    this.attachHandlers(handlers);
+
+    try {
+      log("[RunSession] calling transport.runCode()");
+      this.transport.runCode(code);
+      log("[RunSession] transport.runCode() returned");
+    } catch (e) {
+      error(`[RunSession] start failed: ${formatUnknown(e)}`);
+      handlers.onError?.(formatUnknown(e));
+      handlers.onEnd?.();
+      this.dispose();
+    }
+  }
+
+  /**
+   * Run a packaged project zip (RunProject). Same event lifecycle as start(code).
+   */
+  public startProject(zipData: Buffer, handlers: RunSessionHandlers = {}): void {
+    if (this.disposed) {
+      warn("[RunSession] startProject() called after dispose — ignored");
+      return;
+    }
+
+    log(
+      `[RunSession] startProject bytes=${zipData.length} isConnected=${this.transport.isConnected} isRunning=${this.transport.isRunning}`
+    );
+
+    if (typeof this.transport.runProject !== "function") {
+      handlers.onError?.("Device transport does not support runProject");
+      handlers.onEnd?.();
+      this.dispose();
+      return;
+    }
+
+    this.attachHandlers(handlers);
+
+    try {
+      log("[RunSession] calling transport.runProject()");
+      this.transport.runProject(zipData);
+      log("[RunSession] transport.runProject() returned");
+    } catch (e) {
+      error(`[RunSession] startProject failed: ${formatUnknown(e)}`);
+      handlers.onError?.(formatUnknown(e));
+      handlers.onEnd?.();
+      this.dispose();
+    }
+  }
+
+  private attachHandlers(handlers: RunSessionHandlers): void {
     const onOutput = (text: string) => {
       if (!this.disposed) {
         handlers.onOutput?.(text);
@@ -139,36 +188,25 @@ export class RunSession {
       }
     };
 
-    try {
-      this.transport.on("output", onOutput);
-      this.transport.on("runAck", onRunAck);
-      this.transport.on("error", onError);
-      this.transport.on("finish", onFinish);
-      this.transport.on("stopAck", onStopAck);
-      this.transport.on("stop", onStop);
-      this.transport.on("close", onClose);
-      this.transport.on("img", onImg);
+    this.transport.on("output", onOutput);
+    this.transport.on("runAck", onRunAck);
+    this.transport.on("error", onError);
+    this.transport.on("finish", onFinish);
+    this.transport.on("stopAck", onStopAck);
+    this.transport.on("stop", onStop);
+    this.transport.on("close", onClose);
+    this.transport.on("img", onImg);
 
-      this.cleanups.push(
-        () => this.transport.off("output", onOutput),
-        () => this.transport.off("runAck", onRunAck),
-        () => this.transport.off("error", onError),
-        () => this.transport.off("finish", onFinish),
-        () => this.transport.off("stopAck", onStopAck),
-        () => this.transport.off("stop", onStop),
-        () => this.transport.off("close", onClose),
-        () => this.transport.off("img", onImg)
-      );
-
-      log("[RunSession] calling transport.runCode()");
-      this.transport.runCode(code);
-      log("[RunSession] transport.runCode() returned");
-    } catch (e) {
-      error(`[RunSession] start failed: ${formatUnknown(e)}`);
-      handlers.onError?.(formatUnknown(e));
-      handlers.onEnd?.();
-      this.dispose();
-    }
+    this.cleanups.push(
+      () => this.transport.off("output", onOutput),
+      () => this.transport.off("runAck", onRunAck),
+      () => this.transport.off("error", onError),
+      () => this.transport.off("finish", onFinish),
+      () => this.transport.off("stopAck", onStopAck),
+      () => this.transport.off("stop", onStop),
+      () => this.transport.off("close", onClose),
+      () => this.transport.off("img", onImg)
+    );
   }
 
   public stop(): void {

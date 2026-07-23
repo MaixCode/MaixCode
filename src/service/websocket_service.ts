@@ -207,7 +207,7 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
       [COMMAND.DeviceInfoAck]: this.deviceInfoAckCommand,
       [COMMAND.ImgFormatAck]: this.imgFormatCommand,
       [COMMAND.InstallAppAck]: this.installAppAckCommand,
-      [COMMAND.UpdateRuntimeAck]: () => {},
+      [COMMAND.UpdateRuntimeAck]: this.updateRuntimeAckCommand,
     };
     let handler = table[cmd];
     if (handler) {
@@ -327,6 +327,26 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
     this.emit("installApp", rsp);
   }
 
+  private updateRuntimeAckCommand(content: Uint8Array) {
+    const isSuccess = content[1] === 0;
+    const rsp = isSuccess
+      ? {
+          code: 0,
+          progress: content[0],
+          msg: "Success",
+        }
+      : {
+          code: -1,
+          progress: 0,
+          msg: Buffer.from(content.slice(2)).toString(),
+        };
+    this.emit("updateRuntime", rsp);
+    // After full success, re-query device info (runtime version may change)
+    if (isSuccess && content[0] === 100) {
+      this.sendMessage(COMMAND.DeviceInfo, "");
+    }
+  }
+
   public runCode(code: string) {
     info(`WebSocketService.runCode ip=${this.ip} connected=${this.isConnected} codeLength=${code.length}`);
     if (!this.isConnected) {
@@ -353,6 +373,71 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
       this.sendMessage(COMMAND.Stop, "");
     } catch (e) {
       error(`WebSocketService.stopCode failed: ${e}`);
+    }
+  }
+
+  /**
+   * Install packaged app zip to device (InstallApp).
+   * Progress/result arrive via "installApp" events.
+   */
+  public installApp(zipData: Buffer) {
+    info(
+      `WebSocketService.installApp ip=${this.ip} connected=${this.isConnected} bytes=${zipData.length}`
+    );
+    if (!this.isConnected) {
+      error(`WebSocketService.installApp: not connected to ${this.ip}`);
+      this.emit("error", { code: -1, msg: `Not connected to ${this.ip}` });
+      return;
+    }
+    try {
+      this.sendMessage(COMMAND.InstallApp, zipData);
+      info("WebSocketService.installApp: InstallApp command sent");
+    } catch (e) {
+      error(`WebSocketService.installApp failed: ${e}`);
+      this.emit("error", e instanceof Error ? e : { code: -1, msg: String(e) });
+    }
+  }
+
+  /**
+   * Push encrypted runtime firmware (UpdateRuntime cmd 19).
+   * Payload = version + NUL + firmware bytes. Progress via "updateRuntime" events.
+   */
+  public updateRuntime(payload: Buffer) {
+    info(
+      `WebSocketService.updateRuntime ip=${this.ip} connected=${this.isConnected} bytes=${payload.length}`
+    );
+    if (!this.isConnected) {
+      error(`WebSocketService.updateRuntime: not connected to ${this.ip}`);
+      this.emit("error", { code: -1, msg: `Not connected to ${this.ip}` });
+      return;
+    }
+    try {
+      this.sendMessage(COMMAND.UpdateRuntime, payload);
+      info("WebSocketService.updateRuntime: UpdateRuntime command sent");
+    } catch (e) {
+      error(`WebSocketService.updateRuntime failed: ${e}`);
+      this.emit("error", e instanceof Error ? e : { code: -1, msg: String(e) });
+    }
+  }
+
+  /**
+   * Run a project zip on device (RunProject). Same output/finish lifecycle as runCode.
+   */
+  public runProject(zipData: Buffer) {
+    info(
+      `WebSocketService.runProject ip=${this.ip} connected=${this.isConnected} bytes=${zipData.length}`
+    );
+    if (!this.isConnected) {
+      error(`WebSocketService.runProject: not connected to ${this.ip}`);
+      this.emit("error", { code: -1, msg: `Not connected to ${this.ip}` });
+      return;
+    }
+    try {
+      this.sendMessage(COMMAND.RunProject, zipData);
+      info("WebSocketService.runProject: RunProject command sent");
+    } catch (e) {
+      error(`WebSocketService.runProject failed: ${e}`);
+      this.emit("error", e instanceof Error ? e : { code: -1, msg: String(e) });
     }
   }
 

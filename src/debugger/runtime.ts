@@ -214,6 +214,107 @@ export class MaixPyRuntime extends EventEmitter {
   }
 
   /**
+   * Run a project zip via RunProject (cmd 18). Same busy/retry lifecycle as start().
+   */
+  public async startProject(
+    zipData: Buffer,
+    device: DeviceService | DeviceTransport,
+    label = "project.zip"
+  ): Promise<void> {
+    log(`[MaixPyRuntime] startProject begin bytes=${zipData.length} label=${label}`);
+    try {
+      this.detachSessionOnly();
+
+      const transport = this.resolveTransport(device);
+      if (!transport) {
+        this.failStart("Device transport is missing (not connected?)");
+        return;
+      }
+      if (!transport.isConnected) {
+        this.failStart(`Device transport not connected (ip=${transport.ip})`);
+        return;
+      }
+      if (typeof transport.runProject !== "function") {
+        this.failStart("Device transport does not support runProject");
+        return;
+      }
+      if (!zipData?.length) {
+        this.failStart("Project zip is empty");
+        return;
+      }
+
+      this._sourceFile = label;
+
+      if (transport.isRunning) {
+        log("[MaixPyRuntime] device already running — stop then run project");
+        this.sendEvent(
+          "output",
+          "out",
+          "[MaixCode] Device is already running; stopping previous script...\n"
+        );
+        await this.stopDevice(transport);
+        await delay(150);
+      }
+
+      const maxAttempts = 2;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const ack = await this.dispatchProjectOnce(
+          transport,
+          zipData,
+          label,
+          attempt
+        );
+        log(`[MaixPyRuntime] project attempt ${attempt} firstAck=${ack.kind}`);
+
+        if (ack.kind === "accepted") {
+          log("[MaixPyRuntime] project run accepted; waiting for device finish/stop");
+          return;
+        }
+
+        if (ack.kind === "busy" && attempt < maxAttempts) {
+          this.sendEvent(
+            "output",
+            "out",
+            `[MaixCode] ${ack.message}\n[MaixCode] Stopping previous script and retrying...\n`
+          );
+          this.suppressEnd = true;
+          this.detachSessionOnly();
+          await this.stopDevice(transport);
+          await delay(250);
+          this.suppressEnd = false;
+          continue;
+        }
+
+        if (ack.kind === "busy") {
+          this.sendEvent(
+            "output",
+            "err",
+            `[MaixCode] ${ack.message}\n[MaixCode] Still busy after stop+retry. Press Stop, then Run again.\n`
+          );
+          this.detachSessionOnly();
+          this.sendEvent("end");
+          return;
+        }
+
+        if (ack.kind === "failed") {
+          this.sendEvent("output", "err", ack.message + "\n");
+          this.detachSessionOnly();
+          this.sendEvent("end");
+          return;
+        }
+
+        log("[MaixPyRuntime] project run ended during first-ack wait");
+        return;
+      }
+    } catch (e) {
+      const msg = `MaixPyRuntime.startProject exception: ${formatUnknown(e)}`;
+      logError(msg);
+      this.sendEvent("output", "err", msg);
+      this.sendEvent("end");
+    }
+  }
+
+  /**
    * Start a RunSession and wait until first RunAck / busy / end.
    * On accept, leaves session running and resolves; finish later emits "end".
    */
@@ -298,6 +399,86 @@ export class MaixPyRuntime extends EventEmitter {
           settle({ kind: "accepted" });
         }
       }, 3000);
+    });
+  }
+
+  private dispatchProjectOnce(
+    transport: DeviceTransport,
+    zipData: Buffer,
+    label: string,
+    attempt: number
+  ): Promise<FirstAck> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = (ack: FirstAck) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(ack);
+      };
+
+      log(
+        `[MaixPyRuntime] dispatchProjectOnce attempt=${attempt} (${zipData.length} bytes) -> ${transport.ip}`
+      );
+      this.sendEvent(
+        "output",
+        "out",
+        `[MaixCode] Running project ${label} on ${transport.ip} (${zipData.length} bytes)${attempt > 1 ? ` (retry ${attempt})` : ""}\n`
+      );
+
+      const session = new RunSession(transport);
+      this.runSession = session;
+
+      session.startProject(zipData, {
+        onOutput: (text) => {
+          log(`[MaixPyRuntime] device output: ${String(text).slice(0, 300)}`);
+          this.sendEvent("output", "out", text);
+        },
+        onError: (msg) => {
+          logError(`[MaixPyRuntime] device error: ${msg}`);
+          this.sendEvent("output", "err", msg);
+          if (!settled && !isCodeAlreadyRunningMessage(msg)) {
+            settle({ kind: "failed", message: msg });
+          }
+        },
+        onRunRejected: (msg) => {
+          log(`[MaixPyRuntime] project run rejected: ${msg}`);
+          this.sendEvent("output", "err", msg + "\n");
+          settle({ kind: "busy", message: msg });
+        },
+        onEnd: () => {
+          log("[MaixPyRuntime] project session end");
+          if (this.runSession === session) {
+            this.runSession = undefined;
+          }
+          if (!settled) {
+            settle({ kind: "ended" });
+          }
+          if (!this.stopping && !this.suppressEnd) {
+            this.sendEvent("end");
+          }
+        },
+        onImg: (data) => {
+          this.sendEvent("img", data);
+        },
+      });
+
+      const onRunAck = (content: Uint8Array) => {
+        transport.off("runAck", onRunAck);
+        if (content[0] === 1) {
+          settle({ kind: "accepted" });
+        }
+      };
+      transport.on("runAck", onRunAck);
+
+      setTimeout(() => {
+        transport.off("runAck", onRunAck);
+        if (!settled) {
+          warn("[MaixPyRuntime] no RunAck within 8s for project; keeping session open");
+          settle({ kind: "accepted" });
+        }
+      }, 8000);
     });
   }
 

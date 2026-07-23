@@ -29,6 +29,16 @@ export namespace Commands {
   // Run on device (starts maixpy debug session for current file)
   export const runOnDevice = "maixcode.runOnDevice";
 
+  // Project package / deploy (app.yaml + InstallApp + RunProject)
+  export const configureProject = "maixcode.configureProject";
+  export const packageApp = "maixcode.packageApp";
+  export const installApp = "maixcode.installApp";
+  export const runProject = "maixcode.runProject";
+  export const packageAndInstallApp = "maixcode.packageAndInstallApp";
+
+  /** Install / update MaixVision runtime on device (UpdateRuntime) */
+  export const installRuntime = "maixcode.installRuntime";
+
   // Sidebar Commands
   export const refreshExample = "maixcode.refreshExample";
   export const refreshExampleSource = "maixcode.refreshExampleSource";

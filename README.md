@@ -49,6 +49,12 @@ MaixCode 是一个用于 MaixCAM 设备开发的 VSCode 扩展，让您能够方
 2. 点击示例文件预览内容
 3. 或者右键点击并选择"Open Source File"打开源文件
 
+### 安装 Runtime
+
+1. 连接设备后，在 Device 侧边栏 **Current Device Info** 中可查看 `Runtime` 版本
+2. 点击 **Install Runtime**（或命令面板 `MaixCode: Install Runtime on Device`）
+3. 扩展会从 Sipeed 查询最新版本并下载加密固件，经 WebSocket 安装到设备
+
 <!-- ## 扩展设置
 
 目前此扩展不提供配置选项。将在未来版本中添加以下设置：

@@ -87,6 +87,12 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
           new DeviceInfoItem(`IP: ${device.device?.ip}`),
           new DeviceInfoItem(`SysVer: ${info.sysVer}`),
           new DeviceInfoItem(`MaixPyVer: ${info.maixpyVer}`),
+          new DeviceInfoItem(
+            `Device: ${info.device || "Unknown"}`
+          ),
+          new DeviceInfoItem(
+            `Runtime: ${info.runtime || "not installed"}`
+          ),
           new DeviceInfoItem(`ApiKey: ${info.apiKey}`),
         ];
       }
@@ -101,6 +107,42 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
       if (ip) {
         const name = device.device?.name || "";
         return [
+          new DeviceActionItem(
+            "Run Current File",
+            Commands.runOnDevice,
+            "play",
+            "maixcode-deviceRunFile"
+          ),
+          new DeviceActionItem(
+            "Run Project",
+            Commands.runProject,
+            "run-all",
+            "maixcode-deviceRunProject"
+          ),
+          new DeviceActionItem(
+            "Package App",
+            Commands.packageApp,
+            "package",
+            "maixcode-devicePackageApp"
+          ),
+          new DeviceActionItem(
+            "Install App",
+            Commands.installApp,
+            "cloud-upload",
+            "maixcode-deviceInstallApp"
+          ),
+          new DeviceActionItem(
+            "Configure Project",
+            Commands.configureProject,
+            "settings-gear",
+            "maixcode-deviceConfigureProject"
+          ),
+          new DeviceActionItem(
+            "Install Runtime",
+            Commands.installRuntime,
+            "cloud-download",
+            "maixcode-deviceInstallRuntime"
+          ),
           new DeviceOpenTerminalItem(ip, name),
           new DeviceOpenSftpItem(ip, name),
         ];
@@ -168,6 +210,24 @@ export class DeviceManualConnectItem extends TreeItem {
     command: Commands.connectDevice,
     title: "Connect",
   };
+}
+
+
+export class DeviceActionItem extends TreeItem {
+  constructor(
+    label: string,
+    commandId: string,
+    icon: string,
+    contextValue: string
+  ) {
+    super(label);
+    this.contextValue = contextValue;
+    this.iconPath = new vscode.ThemeIcon(icon);
+    this.command = {
+      command: commandId,
+      title: label,
+    };
+  }
 }
 
 export class DeviceOpenTerminalItem extends TreeItem {

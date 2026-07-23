@@ -10,6 +10,9 @@ import { ImageService } from "./service/image_service";
 import { SshTerminalService } from "./service/ssh/ssh_terminal_service";
 import { SftpService } from "./service/ssh/sftp_service";
 import { ConfigKeys, ConfigSection } from "./constants";
+import { ProjectDeployService } from "./service/project_deploy_service";
+import { RuntimeService } from "./service/runtime_service";
+import { workspaceFileAccessor } from "./debugger/file_accessor";
 
 /**
  * Composition root: wires services and UI.
@@ -27,6 +30,8 @@ export class Instance {
   public imageViewer: ImageViewer;
   public sshTerminalService: SshTerminalService;
   public sftpService: SftpService;
+  public projectDeployService: ProjectDeployService;
+  public runtimeService: RuntimeService;
   public onStatusChange: (status: Status) => void = () => {};
   private status: Status = Status.offline;
 
@@ -97,6 +102,17 @@ export class Instance {
           this.connectionListeners.delete(listener);
         };
       },
+    });
+
+    this.projectDeployService = new ProjectDeployService({
+      getConnectedDevices: () => this.deviceManager.getConnectedDevice(),
+      getCurrentDevice: () => this.deviceManager.getCurrentDevice(),
+      fileAccessor: workspaceFileAccessor,
+    });
+
+    this.runtimeService = new RuntimeService({
+      getConnectedDevices: () => this.deviceManager.getConnectedDevice(),
+      getCurrentDevice: () => this.deviceManager.getCurrentDevice(),
     });
 
     context.subscriptions.push({

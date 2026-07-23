@@ -12,6 +12,12 @@ export interface DeviceTransport {
 
   runCode(code: string): void;
   stopCode(): void;
+  /** Optional: send packaged project zip (RunProject cmd 18) */
+  runProject?(zipData: Buffer): void;
+  /** Optional: install app zip to device (InstallApp cmd 16) */
+  installApp?(zipData: Buffer): void;
+  /** Optional: install/update MaixVision runtime (UpdateRuntime cmd 19) */
+  updateRuntime?(payload: Buffer): void;
 
   on(event: string, listener: (...args: any[]) => void): this;
   off(event: string, listener: (...args: any[]) => void): this;

@@ -148,6 +148,42 @@
         "title": "Refresh SFTP",
         "icon": "$(refresh)",
         "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.configureProject",
+        "title": "Configure Project (app.yaml)",
+        "icon": "$(settings-gear)",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.packageApp",
+        "title": "Package App",
+        "icon": "$(package)",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.installApp",
+        "title": "Install App to Device",
+        "icon": "$(cloud-upload)",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.packageAndInstallApp",
+        "title": "Package and Install App",
+        "icon": "$(cloud-upload)",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.runProject",
+        "title": "Run Project on Device",
+        "icon": "$(run-all)",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.installRuntime",
+        "title": "Install Runtime on Device",
+        "icon": "$(cloud-download)",
+        "category": "MaixCode"
       }
     ],
     "menus": {
@@ -161,6 +197,36 @@
           "command": "maixcode.refreshExample",
           "when": "view == maixcode-example",
           "group": "navigation"
+        },
+        {
+          "command": "maixcode.runProject",
+          "when": "view == maixcode-devices",
+          "group": "navigation@1"
+        },
+        {
+          "command": "maixcode.runOnDevice",
+          "when": "view == maixcode-devices",
+          "group": "navigation@2"
+        },
+        {
+          "command": "maixcode.packageApp",
+          "when": "view == maixcode-devices",
+          "group": "navigation@3"
+        },
+        {
+          "command": "maixcode.installApp",
+          "when": "view == maixcode-devices",
+          "group": "navigation@4"
+        },
+        {
+          "command": "maixcode.configureProject",
+          "when": "view == maixcode-devices",
+          "group": "navigation@5"
+        },
+        {
+          "command": "maixcode.installRuntime",
+          "when": "view == maixcode-devices",
+          "group": "navigation@6"
         }
       ],
       "view/item/context": [
@@ -188,6 +254,26 @@
           "command": "maixcode.openExampleSource",
           "when": "view == maixcode-example && viewItem == file",
           "group": "1_open@1"
+        },
+        {
+          "command": "maixcode.runProject",
+          "when": "view == maixcode-devices && viewItem == maixcode-deviceInfoGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "maixcode.packageApp",
+          "when": "view == maixcode-devices && viewItem == maixcode-deviceInfoGroup",
+          "group": "inline@2"
+        },
+        {
+          "command": "maixcode.installApp",
+          "when": "view == maixcode-devices && viewItem == maixcode-deviceInfoGroup",
+          "group": "inline@3"
+        },
+        {
+          "command": "maixcode.installRuntime",
+          "when": "view == maixcode-devices && viewItem == maixcode-deviceInfoGroup",
+          "group": "inline@4"
         }
       ],
       "editor/title": [
@@ -200,6 +286,16 @@
           "command": "maixcode.sftpRefresh",
           "when": "resourceScheme == maixsftp",
           "group": "navigation"
+        },
+        {
+          "command": "maixcode.runProject",
+          "when": "resourceLangId == python || resourceFilename == app.yaml",
+          "group": "navigation@2"
+        },
+        {
+          "command": "maixcode.packageApp",
+          "when": "resourceLangId == python || resourceFilename == app.yaml",
+          "group": "navigation@3"
         }
       ],
       "editor/context": [
@@ -207,6 +303,26 @@
           "command": "maixcode.runOnDevice",
           "when": "resourceLangId == python",
           "group": "navigation@1"
+        },
+        {
+          "command": "maixcode.runProject",
+          "when": "resourceLangId == python",
+          "group": "navigation@2"
+        },
+        {
+          "command": "maixcode.packageApp",
+          "when": "resourceLangId == python || resourceFilename == app.yaml",
+          "group": "navigation@3"
+        },
+        {
+          "command": "maixcode.installApp",
+          "when": "resourceLangId == python || resourceFilename == app.yaml",
+          "group": "navigation@4"
+        },
+        {
+          "command": "maixcode.configureProject",
+          "when": "resourceLangId == python || resourceFilename == yaml || resourceFilename == app.yaml",
+          "group": "navigation@5"
         }
       ],
       "explorer/context": [
@@ -234,6 +350,31 @@
           "command": "maixcode.sftpEditFilterPatterns",
           "when": "resourceScheme == maixsftp",
           "group": "maixcode@4"
+        },
+        {
+          "command": "maixcode.runProject",
+          "when": "explorerResourceIsFolder",
+          "group": "maixcode@1"
+        },
+        {
+          "command": "maixcode.packageApp",
+          "when": "explorerResourceIsFolder",
+          "group": "maixcode@2"
+        },
+        {
+          "command": "maixcode.installApp",
+          "when": "explorerResourceIsFolder",
+          "group": "maixcode@3"
+        },
+        {
+          "command": "maixcode.configureProject",
+          "when": "explorerResourceIsFolder",
+          "group": "maixcode@4"
+        },
+        {
+          "command": "maixcode.packageAndInstallApp",
+          "when": "explorerResourceIsFolder",
+          "group": "maixcode@5"
         }
       ]
     },
@@ -259,6 +400,23 @@
                 "type": "boolean",
                 "description": "Run without debug UI extras",
                 "default": true
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "file",
+                  "project"
+                ],
+                "default": "file",
+                "description": "file = Run source; project = RunProject zip (projectZip + projectDir)"
+              },
+              "projectDir": {
+                "type": "string",
+                "description": "Project root for mode=project"
+              },
+              "projectZip": {
+                "type": "string",
+                "description": "Path to project zip for mode=project (built by Run Project command)"
               }
             }
           }
@@ -269,6 +427,14 @@
             "request": "launch",
             "name": "MaixPy: Run Current File on Device",
             "program": "${file}"
+          },
+          {
+            "type": "maixpy",
+            "request": "launch",
+            "name": "MaixPy: Run Project on Device",
+            "program": "${workspaceFolder}",
+            "mode": "project",
+            "projectDir": "${workspaceFolder}"
           }
         ],
         "configurationSnippets": [
@@ -280,6 +446,18 @@
               "request": "launch",
               "name": "MaixPy: Run Current File on Device",
               "program": "${file}"
+            }
+          },
+          {
+            "label": "MaixPy: Run Project on Device",
+            "description": "Package workspace project and run via RunProject on MaixCAM",
+            "body": {
+              "type": "maixpy",
+              "request": "launch",
+              "name": "MaixPy: Run Project on Device",
+              "program": "${workspaceFolder}",
+              "mode": "project",
+              "projectDir": "${workspaceFolder}"
             }
           }
         ]
@@ -472,7 +650,7 @@
             "/var/log/**",
             "/^core\\.\\d+$/"
           ],
-          "description": "Hide matching names/paths from SFTP Explorer. Glob (* ? **) or /regex/flags. Right-click a folder/file → Filter (Hide in SFTP) adds its full path. Use Toggle Show Filtered SFTP Items to reveal badges on filtered entries.",
+          "description": "Hide matching names/paths from SFTP Explorer. Glob (* ? **) or /regex/flags. Right-click a folder/file \u2192 Filter (Hide in SFTP) adds its full path. Use Toggle Show Filtered SFTP Items to reveal badges on filtered entries.",
           "items": {
             "type": "string"
           }
