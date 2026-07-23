@@ -6,6 +6,12 @@ import {
   compileSftpHidePatterns,
   type CompiledSftpFilter,
 } from "../../service/ssh/sftp_path_filter";
+import {
+  mapVirtualPath,
+  readSftpBookmarks,
+  type SftpBookmark,
+  type VirtualPathMap,
+} from "../../service/ssh/sftp_bookmarks";
 import type { SftpSession } from "../../service/ssh/sftp_session";
 
 export type SftpMount = {
@@ -15,7 +21,10 @@ export type SftpMount = {
   port: number;
   timeoutMs: number;
   credentials: import("../../service/ssh/types").SshCredential[];
-  /** remote root shown as workspace folder path */
+  /**
+   * Workspace folder path is always virtual root `/`.
+   * Kept for persistence/compat; bookmarks define real remote targets.
+   */
   remoteRoot: string;
   deviceName?: string;
   session: SftpSession;
@@ -23,6 +32,8 @@ export type SftpMount = {
   readOnly: boolean;
   /** When true, filtered entries still appear (for badges / unfilter). */
   showFiltered: boolean;
+  /** First-level bookmark folders under virtual root */
+  bookmarks: SftpBookmark[];
 };
 
 /**
@@ -82,6 +93,26 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
       readOnly: cfg.get<boolean>(ConfigKeys.sftpReadOnly, false),
       showFiltered: cfg.get<boolean>(ConfigKeys.sftpShowFiltered, false),
     });
+    this.reloadBookmarksFromConfig();
+  }
+
+  reloadBookmarksFromConfig(): void {
+    const bookmarks = readSftpBookmarks();
+    for (const m of this.mounts.values()) {
+      m.bookmarks = bookmarks;
+    }
+    this.notifyExplorerRefresh(true);
+  }
+
+  getBookmarks(authority: string): SftpBookmark[] {
+    return this.mounts.get(authority)?.bookmarks ?? readSftpBookmarks();
+  }
+
+  /** Map maixsftp URI to remote path (or virtual-root). */
+  mapUri(uri: vscode.Uri): VirtualPathMap {
+    const mount = this.mounts.get(uri.authority);
+    const bookmarks = mount?.bookmarks ?? readSftpBookmarks();
+    return mapVirtualPath(uri.path, bookmarks);
   }
 
   /**
@@ -222,13 +253,34 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
     if (!mount) {
       return undefined;
     }
-    const remotePath = uriPathToRemote(uri.path);
-    const basename = remotePath.split("/").filter(Boolean).pop() || remotePath;
-    return mount.filter.matchPattern(remotePath, basename);
+    try {
+      const mapped = mapVirtualPath(uri.path, mount.bookmarks);
+      if (mapped.kind === "virtual-root") {
+        return undefined;
+      }
+      // Do not mark bookmark roots as filtered
+      if (mapped.isBookmarkRoot) {
+        return undefined;
+      }
+      const remotePath = mapped.remotePath;
+      const basename =
+        remotePath.split("/").filter(Boolean).pop() || remotePath;
+      return mount.filter.matchPattern(remotePath, basename);
+    } catch {
+      return undefined;
+    }
   }
 
   remotePathOf(uri: vscode.Uri): string {
-    return uriPathToRemote(uri.path);
+    try {
+      const mapped = this.mapUri(uri);
+      if (mapped.kind === "virtual-root") {
+        return "/";
+      }
+      return mapped.remotePath;
+    } catch {
+      return uriPathToRemote(uri.path);
+    }
   }
 
   watch(
@@ -239,11 +291,45 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-    const { mount, remotePath } = await this.resolve(uri);
+    const { mount, mapped, remotePath } = await this.resolve(uri);
+    if (mapped.kind === "virtual-root") {
+      const now = Date.now();
+      return {
+        type: vscode.FileType.Directory,
+        ctime: now,
+        mtime: now,
+        size: 0,
+        permissions: mount.readOnly
+          ? vscode.FilePermission.Readonly
+          : undefined,
+      };
+    }
+    if (mapped.isBookmarkRoot) {
+      // Bookmark folder always Directory even if target missing (show empty/error later)
+      try {
+        const { stats, isLink, linkTarget } =
+          await mount.session.statPreferFollow(remotePath!);
+        return statsToFileStat(stats, mount.readOnly, {
+          isSymlink: isLink,
+          linkTarget,
+          forceDirectory: true,
+        });
+      } catch {
+        const now = Date.now();
+        return {
+          type: vscode.FileType.Directory,
+          ctime: now,
+          mtime: now,
+          size: 0,
+          permissions: mount.readOnly
+            ? vscode.FilePermission.Readonly
+            : undefined,
+        };
+      }
+    }
     try {
       const { stats, isLink, linkTarget } =
-        await mount.session.statPreferFollow(remotePath);
-      // Directory|SymbolicLink so Explorer can expand symlink dirs (e.g. /sbin)
+        await mount.session.statPreferFollow(remotePath!);
       return statsToFileStat(stats, mount.readOnly, {
         isSymlink: isLink,
         linkTarget,
@@ -256,15 +342,21 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   async readDirectory(
     uri: vscode.Uri
   ): Promise<[string, vscode.FileType][]> {
-    const { mount, remotePath } = await this.resolve(uri);
+    const { mount, mapped, remotePath } = await this.resolve(uri);
+    if (mapped.kind === "virtual-root") {
+      // First level = bookmarks only (like Favorites)
+      return mount.bookmarks.map((b) => [
+        b.name,
+        vscode.FileType.Directory,
+      ]);
+    }
     try {
-      // Fast path: readdir as-is (1 RTT). Only on Failure resolve symlink target.
       let list;
       try {
-        list = await mount.session.readdir(remotePath);
+        list = await mount.session.readdir(remotePath!);
       } catch {
         const listPath =
-          await mount.session.resolveForListOnError(remotePath);
+          await mount.session.resolveForListOnError(remotePath!);
         list = await mount.session.readdir(listPath);
       }
 
@@ -280,21 +372,20 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
         if (name === "." || name === "..") {
           continue;
         }
-        const childPath =
+        const childRemote =
           remotePath === "/"
             ? `/${name}`
-            : `${remotePath.replace(/\/$/, "")}/${name}`;
+            : `${remotePath!.replace(/\/$/, "")}/${name}`;
         if (
-          mount.filter.shouldHide(childPath, name) &&
+          mount.filter.shouldHide(childRemote, name) &&
           !mount.showFiltered
         ) {
           continue;
         }
         const { type, needProbe } = entryTypeFromAttrs(ent.attrs?.mode);
-        pending.push({ name, childPath, type, needProbe });
+        pending.push({ name, childPath: childRemote, type, needProbe });
       }
 
-      // Probe symlink targets in parallel (bounded), not serially.
       const probes = pending.filter((p) => p.needProbe);
       if (probes.length) {
         const CONCURRENCY = 8;
@@ -328,9 +419,12 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-    const { mount, remotePath } = await this.resolve(uri);
+    const { mount, mapped, remotePath } = await this.resolve(uri);
+    if (mapped.kind === "virtual-root") {
+      throw vscode.FileSystemError.FileIsADirectory(uri);
+    }
     try {
-      const buf = await mount.session.readFile(remotePath);
+      const buf = await mount.session.readFile(remotePath!);
       return new Uint8Array(buf);
     } catch (e) {
       throw mapSftpError(e, uri);
@@ -342,16 +436,21 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
     content: Uint8Array,
     options: { create: boolean; overwrite: boolean }
   ): Promise<void> {
-    const { mount, remotePath } = await this.resolve(uri);
+    const { mount, mapped, remotePath } = await this.resolve(uri);
+    if (mapped.kind === "virtual-root" || mapped.isBookmarkRoot) {
+      throw vscode.FileSystemError.NoPermissions(
+        "Cannot write bookmark or virtual root"
+      );
+    }
     this.assertWritable(mount, uri);
     try {
       let exists = false;
       try {
-        await mount.session.lstat(remotePath);
+        await mount.session.lstat(remotePath!);
         exists = true;
       } catch {
         try {
-          await mount.session.stat(remotePath);
+          await mount.session.stat(remotePath!);
           exists = true;
         } catch {
           exists = false;
@@ -365,7 +464,7 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
       }
       // ensure parent exists when creating
       if (!exists && options.create) {
-        const parent = parentRemotePath(remotePath);
+        const parent = parentRemotePath(remotePath!);
         if (parent) {
           try {
             await mount.session.stat(parent);
@@ -376,7 +475,7 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
           }
         }
       }
-      await mount.session.writeFile(remotePath, Buffer.from(content));
+      await mount.session.writeFile(remotePath!, Buffer.from(content));
       this._emitter.fire([
         {
           type: exists
@@ -394,10 +493,15 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   async createDirectory(uri: vscode.Uri): Promise<void> {
-    const { mount, remotePath } = await this.resolve(uri);
+    const { mount, mapped, remotePath } = await this.resolve(uri);
+    if (mapped.kind === "virtual-root") {
+      throw vscode.FileSystemError.NoPermissions(
+        "Cannot create under virtual root; edit maixcode.sftpBookmarks"
+      );
+    }
     this.assertWritable(mount, uri);
     try {
-      await mount.session.mkdir(remotePath);
+      await mount.session.mkdir(remotePath!);
       this._emitter.fire([{ type: vscode.FileChangeType.Created, uri }]);
     } catch (e) {
       throw mapSftpError(e, uri);
@@ -408,17 +512,22 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
     uri: vscode.Uri,
     options: { recursive: boolean }
   ): Promise<void> {
-    const { mount, remotePath } = await this.resolve(uri);
+    const { mount, mapped, remotePath } = await this.resolve(uri);
+    if (mapped.kind === "virtual-root" || mapped.isBookmarkRoot) {
+      throw vscode.FileSystemError.NoPermissions(
+        "Cannot delete bookmark or virtual root"
+      );
+    }
     this.assertWritable(mount, uri);
     try {
       if (options.recursive) {
-        await mount.session.rmRecursive(remotePath);
+        await mount.session.rmRecursive(remotePath!);
       } else {
-        const st = await mount.session.stat(remotePath);
+        const st = await mount.session.stat(remotePath!);
         if (st.isDirectory()) {
-          await mount.session.rmdir(remotePath);
+          await mount.session.rmdir(remotePath!);
         } else {
-          await mount.session.unlink(remotePath);
+          await mount.session.unlink(remotePath!);
         }
       }
       this._emitter.fire([{ type: vscode.FileChangeType.Deleted, uri }]);
@@ -439,11 +548,21 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
         "Cross-device rename is not supported"
       );
     }
+    if (
+      oldR.mapped.kind === "virtual-root" ||
+      newR.mapped.kind === "virtual-root" ||
+      (oldR.mapped.kind === "remote" && oldR.mapped.isBookmarkRoot) ||
+      (newR.mapped.kind === "remote" && newR.mapped.isBookmarkRoot)
+    ) {
+      throw vscode.FileSystemError.NoPermissions(
+        "Cannot rename bookmarks or virtual root"
+      );
+    }
     this.assertWritable(oldR.mount, oldUri);
     try {
       let destExists = false;
       try {
-        await newR.mount.session.stat(newR.remotePath);
+        await newR.mount.session.stat(newR.remotePath!);
         destExists = true;
       } catch {
         destExists = false;
@@ -452,9 +571,9 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
         if (!options.overwrite) {
           throw vscode.FileSystemError.FileExists(newUri);
         }
-        await newR.mount.session.rmRecursive(newR.remotePath);
+        await newR.mount.session.rmRecursive(newR.remotePath!);
       }
-      await oldR.mount.session.rename(oldR.remotePath, newR.remotePath);
+      await oldR.mount.session.rename(oldR.remotePath!, newR.remotePath!);
       this._emitter.fire([
         { type: vscode.FileChangeType.Deleted, uri: oldUri },
         { type: vscode.FileChangeType.Created, uri: newUri },
@@ -474,11 +593,19 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   ): Promise<void> {
     const src = await this.resolve(source);
     const dst = await this.resolve(destination);
+    if (
+      src.mapped.kind === "virtual-root" ||
+      dst.mapped.kind === "virtual-root"
+    ) {
+      throw vscode.FileSystemError.NoPermissions(
+        "Cannot copy virtual root"
+      );
+    }
     this.assertWritable(dst.mount, destination);
     try {
       let destExists = false;
       try {
-        await dst.mount.session.stat(dst.remotePath);
+        await dst.mount.session.stat(dst.remotePath!);
         destExists = true;
       } catch {
         destExists = false;
@@ -486,15 +613,20 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
       if (destExists && !options.overwrite) {
         throw vscode.FileSystemError.FileExists(destination);
       }
-      const st = await src.mount.session.stat(src.remotePath);
+      const st = await src.mount.session.stat(src.remotePath!);
       if (st.isDirectory()) {
-        await this.copyDir(src.mount, src.remotePath, dst.mount, dst.remotePath);
+        await this.copyDir(
+          src.mount,
+          src.remotePath!,
+          dst.mount,
+          dst.remotePath!
+        );
       } else {
-        const data = await src.mount.session.readFile(src.remotePath);
+        const data = await src.mount.session.readFile(src.remotePath!);
         if (destExists) {
-          await dst.mount.session.unlink(dst.remotePath);
+          await dst.mount.session.unlink(dst.remotePath!);
         }
-        await dst.mount.session.writeFile(dst.remotePath, data);
+        await dst.mount.session.writeFile(dst.remotePath!, data);
       }
       this._emitter.fire([
         { type: vscode.FileChangeType.Created, uri: destination },
@@ -559,7 +691,12 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
 
   private async resolve(
     uri: vscode.Uri
-  ): Promise<{ mount: SftpMount; remotePath: string }> {
+  ): Promise<{
+    mount: SftpMount;
+    mapped: VirtualPathMap;
+    /** Set when mapped.kind === "remote" */
+    remotePath?: string;
+  }> {
     if (uri.scheme !== SftpFileSystemProvider.scheme) {
       throw vscode.FileSystemError.Unavailable(uri);
     }
@@ -575,7 +712,6 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
     }
     try {
       if (!mount.session.isConnected) {
-        // Session may have been reset after drop; reconnect in place
         await mount.session.ensureConnected({
           host: mount.host,
           port: mount.port,
@@ -585,7 +721,6 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
         });
       }
     } catch (e) {
-      // Session may be disposed after hard failure — rebuild via ensureMount
       warn(
         `[SFTP] reconnect failed for ${authority}, remounting: ${formatUnknown(e)}`
       );
@@ -598,8 +733,15 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
         );
       }
     }
-    const remotePath = uriPathToRemote(uri.path);
-    return { mount, remotePath };
+    try {
+      const mapped = mapVirtualPath(uri.path, mount.bookmarks);
+      if (mapped.kind === "virtual-root") {
+        return { mount, mapped };
+      }
+      return { mount, mapped, remotePath: mapped.remotePath };
+    } catch {
+      throw vscode.FileSystemError.FileNotFound(uri);
+    }
   }
 
   private async tryEnsureMount(
@@ -685,17 +827,20 @@ function ancestorRemotePaths(remotePath: string): string[] {
 function statsToFileStat(
   st: Stats,
   readOnly: boolean,
-  opts?: { isSymlink?: boolean; linkTarget?: string }
+  opts?: {
+    isSymlink?: boolean;
+    linkTarget?: string;
+    forceDirectory?: boolean;
+  }
 ): vscode.FileStat {
   let type = vscode.FileType.File;
-  if (st.isDirectory()) {
+  if (opts?.forceDirectory || st.isDirectory()) {
     type = vscode.FileType.Directory;
   } else if (st.isFile()) {
     type = vscode.FileType.File;
   } else if (st.isSymbolicLink()) {
     type = vscode.FileType.SymbolicLink;
   } else {
-    // mode fallback
     const mode = st.mode ?? 0;
     const ifmt = mode & 0o170000;
     if (ifmt === 0o040000) {
@@ -704,7 +849,6 @@ function statsToFileStat(
       type = vscode.FileType.SymbolicLink;
     }
   }
-  // Mark as symlink|targetType so Explorer can expand / show link badge
   if (opts?.isSymlink) {
     type = type | vscode.FileType.SymbolicLink;
   }

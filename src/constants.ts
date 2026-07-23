@@ -55,8 +55,10 @@ export namespace ConfigKeys {
   export const sshPort = "sshPort";
   export const sshConnectTimeoutMs = "sshConnectTimeoutMs";
   export const sshCredentials = "sshCredentials";
-  /** Remote directory mounted as workspace root */
+  /** @deprecated Prefer sftpBookmarks; still used as fallback single root if bookmarks empty */
   export const sftpRoot = "sftpRoot";
+  /** Bookmark folders shown as first level under MaixSFTP (name, remotePath, order) */
+  export const sftpBookmarks = "sftpBookmarks";
   /** Glob or /regex/ patterns to hide from SFTP Explorer listings */
   export const sftpHidePatterns = "sftpHidePatterns";
   export const sftpReadOnly = "sftpReadOnly";

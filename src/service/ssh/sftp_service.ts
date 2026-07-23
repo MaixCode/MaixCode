@@ -11,6 +11,7 @@ import {
   normalizeRemotePath,
   patternForPath,
 } from "./sftp_path_filter";
+import { readSftpBookmarks } from "./sftp_bookmarks";
 import { SftpSession } from "./sftp_session";
 import { SftpFileDecorationProvider } from "../../ui/provider/sftp_decoration";
 import {
@@ -65,6 +66,9 @@ export class SftpService {
           ) ||
           e.affectsConfiguration(
             `${ConfigSection}.${ConfigKeys.sftpShowFiltered}`
+          ) ||
+          e.affectsConfiguration(
+            `${ConfigSection}.${ConfigKeys.sftpBookmarks}`
           )
         ) {
           this.fs.reloadFiltersFromConfig();
@@ -113,13 +117,13 @@ export class SftpService {
       return;
     }
 
-    const remoteRoot = normalizeRoot(
-      cfg.get<string>(ConfigKeys.sftpRoot, "/")
-    );
     const readOnly = cfg.get<boolean>(ConfigKeys.sftpReadOnly, false);
     const hidePatterns = cfg.get<string[]>(ConfigKeys.sftpHidePatterns, []);
     const showFiltered = cfg.get<boolean>(ConfigKeys.sftpShowFiltered, false);
     const filter = compileSftpHidePatterns(hidePatterns);
+    const bookmarks = readSftpBookmarks(cfg);
+    // Virtual workspace root is always `/` (bookmark list)
+    const virtualRoot = "/";
 
     const authority = sanitizeAuthority(
       (req.deviceName || "").trim() || host
@@ -132,8 +136,9 @@ export class SftpService {
       existing.host === host &&
       existing.session.isConnected
     ) {
+      existing.bookmarks = bookmarks;
       if (!req.quiet) {
-        const folderUri = buildSftpUri(authority, existing.remoteRoot);
+        const folderUri = buildSftpUri(authority, virtualRoot);
         await this.ensureWorkspaceFolder(
           folderUri,
           `MaixSFTP: ${req.deviceName || host}`
@@ -167,11 +172,6 @@ export class SftpService {
             credentials,
             onProgress: (line) => log(`[SFTP] ${line}`),
           });
-          const resolved = await session.realpath(remoteRoot);
-          const st = await session.stat(resolved);
-          if (!st.isDirectory()) {
-            throw new Error(`sftpRoot is not a directory: ${resolved}`);
-          }
 
           this.fs.registerMount({
             authority,
@@ -179,16 +179,17 @@ export class SftpService {
             port,
             timeoutMs,
             credentials,
-            remoteRoot: resolved,
+            remoteRoot: virtualRoot,
             deviceName: req.deviceName,
             session,
             filter,
             readOnly,
             showFiltered,
+            bookmarks,
           });
           this.persistMounts();
 
-          const folderUri = buildSftpUri(authority, resolved);
+          const folderUri = buildSftpUri(authority, virtualRoot);
           const name = `MaixSFTP: ${req.deviceName || host}`;
           await this.ensureWorkspaceFolder(folderUri, name);
           if (!quiet) {
@@ -196,7 +197,9 @@ export class SftpService {
             vscode.window.showInformationMessage(`Opened ${name}`);
           }
           log(
-            `[SFTP] opened ${folderUri.toString()}${quiet ? " (auto)" : ""}`
+            `[SFTP] opened ${folderUri.toString()} bookmarks=${bookmarks
+              .map((b) => b.name)
+              .join(",")}${quiet ? " (auto)" : ""}`
           );
         } catch (e) {
           session.dispose();
@@ -629,24 +632,26 @@ export class SftpService {
       } catch {
         // keep configured root
       }
+      const bookmarks = readSftpBookmarks(cfg);
       const mount: SftpMount = {
         authority: meta.authority,
         host,
         port: meta.port,
         timeoutMs,
         credentials,
-        remoteRoot: resolved,
+        remoteRoot: "/",
         deviceName: meta.deviceName,
         session,
         filter,
         readOnly,
         showFiltered,
+        bookmarks,
       };
       this.fs.registerMount(mount);
       this.persistMounts();
-      // Ensure workspace folder still present
+      // Ensure workspace folder still present (virtual root)
       await this.ensureWorkspaceFolder(
-        buildSftpUri(meta.authority, resolved),
+        buildSftpUri(meta.authority, "/"),
         `MaixSFTP: ${meta.deviceName || host}`
       );
       return mount;

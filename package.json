@@ -450,7 +450,7 @@
         "maixcode.sftpRoot": {
           "type": "string",
           "default": "/",
-          "description": "Remote directory mounted when opening device SFTP (POSIX path)."
+          "description": "Legacy single mount root. Prefer maixcode.sftpBookmarks for first-level folders. Used only if sftpBookmarks is empty."
         },
         "maixcode.sftpReadOnly": {
           "type": "boolean",
@@ -485,7 +485,49 @@
         "maixcode.autoOpenSftp": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically open device SFTP (maixsftp workspace folder) when a device connects. Uses maixcode.sshCredentials and maixcode.sftpRoot. Quiet mode (no toast / no Explorer focus)."
+          "description": "Automatically open device SFTP (maixsftp workspace folder) when a device connects. Uses maixcode.sshCredentials and maixcode.sftpBookmarks. Quiet mode (no toast / no Explorer focus)."
+        },
+        "maixcode.sftpBookmarks": {
+          "type": "array",
+          "default": [
+            {
+              "name": "Root",
+              "remotePath": "/",
+              "order": 0
+            },
+            {
+              "name": "Home",
+              "remotePath": "/root",
+              "order": 1
+            }
+          ],
+          "description": "SFTP first-level folders (bookmarks). Each entry: name (label), remotePath (device path), order (sort). Default: Root (/) and Home (/root).",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "remotePath"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Display name under MaixSFTP root"
+              },
+              "remotePath": {
+                "type": "string",
+                "description": "Absolute remote path (also accepts remote_path)"
+              },
+              "remote_path": {
+                "type": "string",
+                "description": "Alias for remotePath"
+              },
+              "order": {
+                "type": "number",
+                "default": 0,
+                "description": "Sort order (ascending)"
+              }
+            }
+          }
         }
       }
     }

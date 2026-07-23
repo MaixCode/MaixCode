@@ -2,8 +2,9 @@ import * as vscode from "vscode";
 import { SftpFileSystemProvider } from "./sftp_fs";
 
 /**
- * Badge + tooltip for SFTP entries that match hide/filter patterns.
- * Only meaningful when maixcode.sftpShowFiltered is true (items remain in list).
+ * Explorer decorations for maixsftp:
+ * - Bookmark roots: blue label (no badge/icon)
+ * - Filtered entries: "H" when showFiltered is on
  */
 export class SftpFileDecorationProvider
   implements vscode.FileDecorationProvider
@@ -20,6 +21,18 @@ export class SftpFileDecorationProvider
   ): vscode.ProviderResult<vscode.FileDecoration> {
     if (uri.scheme !== SftpFileSystemProvider.scheme) {
       return undefined;
+    }
+    try {
+      const mapped = this.fs.mapUri(uri);
+      if (mapped.kind === "remote" && mapped.isBookmarkRoot) {
+        return {
+          tooltip: `${mapped.bookmark.name} → ${mapped.bookmark.remotePath}`,
+          color: new vscode.ThemeColor("charts.blue"),
+          propagate: false,
+        };
+      }
+    } catch {
+      // ignore map errors
     }
     const pattern = this.fs.getFilterMatch(uri);
     if (!pattern) {
