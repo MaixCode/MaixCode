@@ -191,6 +191,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     const cfg = vscode.workspace.getConfiguration("maixcode");
     const defaultMode = cfg.get<string>("imageViewerDefaultMode", "websocket");
     const httpInterval = cfg.get<number>("imageHttpIntervalMs", 33);
+    // Auto-start stream + histogram when webview opens (setting still honored).
     const autoStart = cfg.get<boolean>("imageViewerAutoStart", true);
     void webview.postMessage({
       type: "init",
@@ -344,7 +345,24 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     const tAutoReconnect = this.escapeHtml(vscode.l10n.t("Auto reconnect"));
     const tIdle = this.escapeHtml(vscode.l10n.t("Idle"));
     const tHistogram = this.escapeHtml(vscode.l10n.t("Histogram"));
+    const tSettings = this.escapeHtml(vscode.l10n.t("Settings"));
+    const tFit = this.escapeHtml(vscode.l10n.t("Fit to view"));
+    const tLog = this.escapeHtml(vscode.l10n.t("Log"));
     const tTitle = this.escapeHtml(vscode.l10n.t("MaixCAM Image"));
+    // Inline SVG icons (currentColor); titles keep a11y text
+    const iconPlay =
+      '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 2.5v11l9-5.5L4 2.5z"/></svg>';
+    const iconCamera =
+      '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5.5 3.5h1.2l.8-1h3l.8 1H12.5A1.5 1.5 0 0 1 14 5v6.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5V5a1.5 1.5 0 0 1 1.5-1.5h2zm2.5 2A2.75 2.75 0 1 0 10.75 8.25 2.75 2.75 0 0 0 8 5.5zm0 1.5a1.25 1.25 0 1 1-1.25 1.25A1.25 1.25 0 0 1 8 7z"/></svg>';
+    const iconGear =
+      '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.1 1.2 9.4 3a4.8 4.8 0 0 1 1.3.75l1.7-.7 1.1 1.9-1.4 1.2c.1.35.15.7.15 1.05s-.05.7-.15 1.05l1.4 1.2-1.1 1.9-1.7-.7A4.8 4.8 0 0 1 9.4 12l-.3 1.8H7.2L6.9 12a4.8 4.8 0 0 1-1.3-.75l-1.7.7-1.1-1.9 1.4-1.2A4.6 4.6 0 0 1 4 7.8c0-.35.05-.7.15-1.05L2.75 5.55l1.1-1.9 1.7.7A4.8 4.8 0 0 1 6.9 3.6l.3-1.8h1.9zM8 5.5A2.3 2.3 0 1 0 10.3 7.8 2.3 2.3 0 0 0 8 5.5z"/></svg>';
+    const iconClose =
+      '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3.5 3.5 8 8l4.5-4.5 1 1L9 9l4.5 4.5-1 1L8 10l-4.5 4.5-1-1L7 9 2.5 4.5z"/></svg>';
+    // expand / fit-to-view (arrows to corners)
+    const iconFit =
+      '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2h4v1.5H3.5V6H2V2zm8 0h4v4h-1.5V3.5H10V2zM2 10h1.5v2.5H6V14H2v-4zm10.5 2.5V10H14v4h-4v-1.5h2.5zM5 5h6v6H5V5z"/></svg>';
+    const iconLog =
+      '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 2.5h10A1.5 1.5 0 0 1 14.5 4v8A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4A1.5 1.5 0 0 1 3 2.5zM3 4v8h10V4H3zm1.5 1.5h7v1h-7v-1zm0 2.5h7v1h-7V8zm0 2.5h5v1h-5v-1z"/></svg>';
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -359,26 +377,68 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     <select id="deviceSelect" title="${tDevice}">
       <option value="" disabled selected>${tDevice}</option>
     </select>
-    <div class="modes" role="group" aria-label="${tTransport}">
-      <button type="button" class="stream-mode" data-mode="http">HTTP</button>
-      <button type="button" class="stream-mode active" data-mode="websocket">WS</button>
-      <button type="button" class="stream-mode" data-mode="mjpeg">MJPEG</button>
-    </div>
-    <button type="button" class="btn primary" id="startBtn" disabled>${tStart}</button>
-    <button type="button" class="btn" id="stopBtn" disabled>${tStop}</button>
-    <button type="button" class="btn" id="screenshotBtn" disabled title="${tScreenshot}">${tShot}</button>
-    <input type="number" id="intervalInput" value="33" min="16" max="2000" step="1" title="${tInterval}" />
-    <label class="chk" title="${tOverlay}"><input type="checkbox" id="overlayToggle" checked /> HUD</label>
-    <label class="chk" title="${tHist}"><input type="checkbox" id="histogramToggle" checked /> Hist</label>
-    <select id="histSpace" title="${tHistSpace}" disabled>
-      <option value="rgb" selected>RGB</option>
-      <option value="gray">GRAY</option>
-      <option value="lab">LAB</option>
-      <option value="yuv">YUV</option>
-      <option value="hsv">HSV</option>
-    </select>
-    <label class="chk" title="${tAutoReconnect}"><input type="checkbox" id="autoReconnect" checked /> ${tAuto}</label>
+    <button type="button" class="btn icon-btn primary stream-toggle" id="streamBtn" disabled title="${tStart}" aria-label="${tStart}" data-start="${tStart}" data-stop="${tStop}">${iconPlay}</button>
+    <button type="button" class="btn icon-btn" id="screenshotBtn" disabled title="${tScreenshot}" aria-label="${tScreenshot}">${iconCamera}</button>
+    <button type="button" class="btn icon-btn" id="fitViewBtn" title="${tFit}" aria-label="${tFit}">${iconFit}</button>
+    <button type="button" class="btn icon-btn" id="logBtn" title="${tLog}" aria-label="${tLog}">${iconLog}</button>
+    <button type="button" class="btn icon-btn" id="settingsBtn" title="${tSettings}" aria-label="${tSettings}">${iconGear}</button>
     <div class="status idle" id="connectionStatus">${tIdle}</div>
+  </div>
+  <div class="settings-panel" id="settingsPanel" hidden>
+    <div class="settings-head">
+      <span>${tSettings}</span>
+      <button type="button" class="btn icon-btn" id="settingsClose" title="Close" aria-label="Close">${iconClose}</button>
+    </div>
+    <div class="settings-body">
+      <div class="settings-row">
+        <span class="settings-label">${tTransport}</span>
+        <div class="modes" role="group" aria-label="${tTransport}">
+          <button type="button" class="stream-mode" data-mode="http">HTTP</button>
+          <button type="button" class="stream-mode active" data-mode="websocket">WS</button>
+          <button type="button" class="stream-mode" data-mode="mjpeg">MJPEG</button>
+        </div>
+      </div>
+      <label class="settings-row">
+        <span class="settings-label">${tInterval}</span>
+        <input type="number" id="intervalInput" value="33" min="16" max="2000" step="1" />
+      </label>
+      <label class="settings-row settings-row-inline">
+        <span class="settings-label">${tAutoReconnect}</span>
+        <input type="checkbox" id="autoReconnect" checked />
+      </label>
+      <label class="settings-row settings-row-inline">
+        <span class="settings-label">${tOverlay}</span>
+        <input type="checkbox" id="overlayToggle" checked />
+      </label>
+      <label class="settings-row settings-row-inline">
+        <span class="settings-label">${tHist}</span>
+        <input type="checkbox" id="histogramToggle" checked />
+      </label>
+      <label class="settings-row">
+        <span class="settings-label">${tHistSpace}</span>
+        <select id="histSpace">
+          <option value="rgb" selected>RGB</option>
+          <option value="gray">GRAY</option>
+          <option value="lab">LAB</option>
+          <option value="yuv">YUV</option>
+          <option value="hsv">HSV</option>
+        </select>
+      </label>
+      <label class="settings-row">
+        <span class="settings-label">Histogram quality</span>
+        <select id="histQuality">
+          <option value="160">Fast (max 160)</option>
+          <option value="320" selected>Balanced (max 320)</option>
+          <option value="640">High (max 640)</option>
+          <option value="full">Full resolution</option>
+        </select>
+      </label>
+      <p class="settings-hint">Full uses every pixel; slower on high-res streams.</p>
+      <label class="settings-row">
+        <span class="settings-label">Hist interval (ms)</span>
+        <input type="number" id="histIntervalMs" value="120" min="30" max="1000" step="10" />
+      </label>
+    </div>
   </div>
   <div class="stage" id="stage">
     <img id="streamImage" alt="" draggable="false" />
@@ -396,7 +456,14 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     <div class="hist-charts" id="histCharts"></div>
     <div class="hist-tooltip" id="histTooltip" hidden></div>
   </div>
-  <div class="footer">
+  <div class="log-panel" id="logPanel" hidden>
+    <div class="log-panel-head">
+      <span>${tLog}</span>
+      <div class="log-panel-actions">
+        <button type="button" class="btn" id="logClearBtn">Clear</button>
+        <button type="button" class="btn icon-btn" id="logClose" title="Close" aria-label="Close">${iconClose}</button>
+      </div>
+    </div>
     <div class="log-section" id="logContainer"></div>
   </div>
   <script src="${scriptUri}"></script>

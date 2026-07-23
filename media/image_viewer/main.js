@@ -9,14 +9,26 @@
   const overlayInfo = document.getElementById('overlayInfo');
   const zoomBadge = document.getElementById('zoomBadge');
   const logContainer = document.getElementById('logContainer');
+  const logPanel = document.getElementById('logPanel');
+  const logBtn = document.getElementById('logBtn');
+  const logClose = document.getElementById('logClose');
+  const logClearBtn = document.getElementById('logClearBtn');
   // stream metrics for HUD overlay
   let metricFps = '0';
   let metricKb = '0';
   let metricRes = '-';
   let metricLatency = '-';
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
+  const streamBtn = document.getElementById('streamBtn');
   const screenshotBtn = document.getElementById('screenshotBtn');
+  const fitViewBtn = document.getElementById('fitViewBtn');
+  const streamBtnStartLabel =
+    (streamBtn && streamBtn.getAttribute('data-start')) || 'Start';
+  const streamBtnStopLabel =
+    (streamBtn && streamBtn.getAttribute('data-stop')) || 'Stop';
+  const ICON_PLAY =
+    '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 2.5v11l9-5.5L4 2.5z"/></svg>';
+  const ICON_STOP =
+    '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3.5 3.5h9v9h-9z"/></svg>';
   const intervalInput = document.getElementById('intervalInput');
   const overlayToggle = document.getElementById('overlayToggle');
   const histogramToggle = document.getElementById('histogramToggle');
@@ -27,6 +39,11 @@
   const histMeta = document.getElementById('histMeta');
   const histTooltip = document.getElementById('histTooltip');
   const autoReconnect = document.getElementById('autoReconnect');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const settingsClose = document.getElementById('settingsClose');
+  const histQuality = document.getElementById('histQuality');
+  const histIntervalInput = document.getElementById('histIntervalMs');
   const streamModes = document.querySelectorAll('.stream-mode');
 
   let httpBase = '';
@@ -34,6 +51,10 @@
   let currentDevice = null;
   let currentMode = 'websocket';
   let isStreaming = false;
+  /** True while auto-start / start is in progress (keeps Start/Stop UI consistent). */
+  let streamStarting = false;
+  /** Prefer auto-start stream whenever a device is available (from host init / setting). */
+  let preferAutoStart = true;
   let streamTimer = null;
   let websocket = null;
   let httpInFlight = false;
@@ -71,12 +92,14 @@
   let histViews = []; // per-channel canvas views
   let histHover = null; // { ch, bin }
   const HIST_BINS = 256;
-  const HIST_MAX_EDGE = 160;
-  const HIST_MIN_MS = 120;
+  /** Longest edge for hist sample; 0 = full resolution. */
+  let histMaxEdge = 320;
+  let histMinMs = 120;
   let HIST_CSS_H = 80;
   const HIST_DOCK_DEFAULT_H = 500;
   const HIST_DOCK_MIN_H = 140;
   let histDockHeight = HIST_DOCK_DEFAULT_H;
+  const VIEWER_SETTINGS_KEY = 'maixcode.imageViewer.settings';
   let histResizeActive = false;
   let histResizeStartY = 0;
   let histResizeStartH = 0;
@@ -374,9 +397,6 @@
   }
 
     function setHistUiEnabled(on) {
-    if (histSpace) {
-      histSpace.disabled = !on;
-    }
     if (histPanel) {
       histPanel.hidden = !on;
     }
@@ -502,15 +522,179 @@
   }
 
   function sampleSize(nw, nh) {
-    const edge = Math.max(nw, nh);
-    if (edge <= HIST_MAX_EDGE) {
+    // 0 / full = no downsample
+    if (!histMaxEdge || histMaxEdge <= 0) {
       return { w: nw, h: nh };
     }
-    const scale = HIST_MAX_EDGE / edge;
+    const edge = Math.max(nw, nh);
+    if (edge <= histMaxEdge) {
+      return { w: nw, h: nh };
+    }
+    const scale = histMaxEdge / edge;
     return {
       w: Math.max(1, Math.round(nw * scale)),
       h: Math.max(1, Math.round(nh * scale)),
     };
+  }
+
+  function loadViewerSettings() {
+    try {
+      const st = vscode.getState && vscode.getState();
+      const s = (st && st.viewerSettings) || null;
+      if (!s) {
+        return;
+      }
+      if (s.histQuality === 'full' || s.histQuality === 0 || s.histQuality === '0') {
+        histMaxEdge = 0;
+        if (histQuality) {
+          histQuality.value = 'full';
+        }
+      } else if (s.histQuality != null) {
+        const n = parseInt(s.histQuality, 10);
+        if (n === 160 || n === 320 || n === 640) {
+          histMaxEdge = n;
+          if (histQuality) {
+            histQuality.value = String(n);
+          }
+        }
+      }
+      if (s.histMinMs != null) {
+        const ms = Math.max(30, Math.min(1000, parseInt(s.histMinMs, 10) || 120));
+        histMinMs = ms;
+        if (histIntervalInput) {
+          histIntervalInput.value = String(ms);
+        }
+      }
+      if (s.httpInterval != null && intervalInput) {
+        intervalInput.value = String(
+          Math.max(16, Math.min(2000, parseInt(s.httpInterval, 10) || 33))
+        );
+      }
+      if (typeof s.autoReconnect === 'boolean' && autoReconnect) {
+        autoReconnect.checked = s.autoReconnect;
+      }
+      if (
+        s.mode === 'http' ||
+        s.mode === 'websocket' ||
+        s.mode === 'mjpeg'
+      ) {
+        currentMode = s.mode;
+        streamModes.forEach(function (m) {
+          m.classList.toggle('active', m.dataset.mode === currentMode);
+        });
+      }
+      if (typeof s.hud === 'boolean' && overlayToggle) {
+        overlayToggle.checked = s.hud;
+      }
+      if (typeof s.hist === 'boolean' && histogramToggle) {
+        histogramToggle.checked = s.hist;
+      }
+      if (s.histSpace && histSpace) {
+        histSpace.value = s.histSpace;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function saveViewerSettings() {
+    try {
+      const prev = (vscode.getState && vscode.getState()) || {};
+      const quality = histMaxEdge <= 0 ? 'full' : String(histMaxEdge);
+      const next = Object.assign({}, prev, {
+        viewerSettings: {
+          histQuality: quality,
+          histMinMs: histMinMs,
+          httpInterval: intervalInput
+            ? parseInt(intervalInput.value, 10) || 33
+            : 33,
+          autoReconnect: !!(autoReconnect && autoReconnect.checked),
+          mode: currentMode,
+          hud: !!(overlayToggle && overlayToggle.checked),
+          hist: !!(histogramToggle && histogramToggle.checked),
+          histSpace: (histSpace && histSpace.value) || 'rgb',
+        },
+      });
+      if (vscode.setState) {
+        vscode.setState(next);
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function applyHistQualityFromUi() {
+    if (!histQuality) {
+      return;
+    }
+    const v = histQuality.value;
+    if (v === 'full') {
+      histMaxEdge = 0;
+    } else {
+      const n = parseInt(v, 10);
+      histMaxEdge = n === 160 || n === 640 ? n : 320;
+    }
+    saveViewerSettings();
+    forceHistogram();
+  }
+
+  function applyHistIntervalFromUi() {
+    if (!histIntervalInput) {
+      return;
+    }
+    histMinMs = Math.max(30, Math.min(1000, parseInt(histIntervalInput.value, 10) || 120));
+    histIntervalInput.value = String(histMinMs);
+    saveViewerSettings();
+  }
+
+  function setSettingsOpen(open) {
+    if (!settingsPanel) {
+      return;
+    }
+    settingsPanel.hidden = !open;
+    if (settingsBtn) {
+      settingsBtn.classList.toggle('active', !!open);
+    }
+    if (open) {
+      setLogOpen(false);
+    }
+  }
+
+  function toggleSettings() {
+    if (!settingsPanel) {
+      return;
+    }
+    setSettingsOpen(!!settingsPanel.hidden);
+  }
+
+  function setLogOpen(open) {
+    if (!logPanel) {
+      return;
+    }
+    logPanel.hidden = !open;
+    if (logBtn) {
+      logBtn.classList.toggle('active', !!open);
+    }
+    if (open) {
+      setSettingsOpen(false);
+      if (logContainer) {
+        logContainer.scrollTop = logContainer.scrollHeight;
+      }
+    }
+  }
+
+  function toggleLog() {
+    if (!logPanel) {
+      return;
+    }
+    setLogOpen(!!logPanel.hidden);
+  }
+
+  function clearLog() {
+    if (!logContainer) {
+      return;
+    }
+    logContainer.innerHTML = '';
   }
 
   function accumulateHistogram(data, space) {
@@ -1015,12 +1199,14 @@
     };
     ensureHistViews(bins.length);
     if (histMeta) {
+      const q =
+        histMaxEdge <= 0
+          ? 'full'
+          : sampleW + '×' + sampleH;
       histMeta.textContent =
         cfg.name +
         ' · ' +
-        sampleW +
-        '×' +
-        sampleH +
+        q +
         ' · ' +
         bins.length +
         ' ch';
@@ -1057,8 +1243,15 @@
     }
   }
 
-  function scheduleHistogram() {
-    if (!histogramToggle || !histogramToggle.checked || !isStreaming) {
+  function scheduleHistogram(force) {
+    if (!histogramToggle || !histogramToggle.checked) {
+      return;
+    }
+    // allow hist from last frame even after stop; while streaming prefer live frames
+    if (!streamImage || !streamImage.naturalWidth || !streamImage.naturalHeight) {
+      if (force) {
+        histPending = true;
+      }
       return;
     }
     const now = performance.now();
@@ -1066,7 +1259,7 @@
       histPending = true;
       return;
     }
-    if (now - histThrottle < HIST_MIN_MS) {
+    if (!force && now - histThrottle < histMinMs) {
       histPending = true;
       return;
     }
@@ -1075,8 +1268,13 @@
     updateHistogram();
   }
 
+  function forceHistogram() {
+    histThrottle = 0;
+    scheduleHistogram(true);
+  }
+
   function updateHistogram() {
-    if (!histogramToggle || !histogramToggle.checked || !isStreaming) {
+    if (!histogramToggle || !histogramToggle.checked) {
       return;
     }
     if (!streamImage || !streamImage.naturalWidth || !streamImage.naturalHeight) {
@@ -1109,7 +1307,7 @@
     histBusy = false;
     if (histPending && histogramToggle.checked && isStreaming) {
       histPending = false;
-      const wait = Math.max(0, HIST_MIN_MS - (performance.now() - histThrottle));
+      const wait = Math.max(0, histMinMs - (performance.now() - histThrottle));
       setTimeout(function () {
         if (histogramToggle.checked && isStreaming) {
           histThrottle = 0;
@@ -1131,7 +1329,7 @@
       }
       // layout then compute so canvas clientWidth is valid
       requestAnimationFrame(function () {
-        scheduleHistogram();
+        forceHistogram();
         applyViewTransform();
       });
     } else {
@@ -1162,9 +1360,14 @@
     const next = URL.createObjectURL(b);
     const prev = objectUrl;
     objectUrl = next;
-    const onDone = function () {
-      streamImage.removeEventListener('load', onDone);
-      streamImage.removeEventListener('error', onDone);
+    let paintSettled = false;
+    function settle() {
+      if (paintSettled) {
+        return;
+      }
+      paintSettled = true;
+      streamImage.removeEventListener('load', settle);
+      streamImage.removeEventListener('error', settle);
       if (prev && prev !== objectUrl) {
         URL.revokeObjectURL(prev);
       }
@@ -1172,15 +1375,31 @@
       if (m || s != null) {
         applyMeta(m, s);
       }
-      scheduleHistogram();
+      // force hist as soon as frame is ready (dock may need a layout frame)
+      if (histogramToggle && histogramToggle.checked) {
+        if (histPanel && histPanel.hidden) {
+          setHistUiEnabled(true);
+          applyHistDockHeight(histDockHeight);
+        }
+        requestAnimationFrame(function () {
+          forceHistogram();
+          requestAnimationFrame(function () {
+            forceHistogram();
+          });
+        });
+      }
       painting = false;
       if (pendingBlob && isStreaming) {
         paintBlob(pendingBlob, pendingMeta, pendingSize);
       }
-    };
-    streamImage.addEventListener('load', onDone);
-    streamImage.addEventListener('error', onDone);
+    }
+    streamImage.addEventListener('load', settle);
+    streamImage.addEventListener('error', settle);
     streamImage.src = next;
+    // cached/same-url decode may already be complete
+    if (streamImage.complete && streamImage.naturalWidth) {
+      settle();
+    }
   }
 
   function revokeObjectUrl() {
@@ -1298,8 +1517,37 @@
     httpInFlight = false;
   }
 
+  function syncStreamButtons() {
+    const hasDevice = !!currentDevice;
+    const busy = isStreaming || streamStarting;
+    if (streamBtn) {
+      streamBtn.disabled = !hasDevice && !busy;
+      streamBtn.innerHTML = busy ? ICON_STOP : ICON_PLAY;
+      streamBtn.title = busy ? streamBtnStopLabel : streamBtnStartLabel;
+      streamBtn.setAttribute(
+        'aria-label',
+        busy ? streamBtnStopLabel : streamBtnStartLabel
+      );
+      streamBtn.classList.toggle('is-running', busy);
+      streamBtn.classList.toggle('primary', !busy);
+    }
+    if (screenshotBtn) {
+      const hasFrame = !!(streamImage && streamImage.naturalWidth);
+      screenshotBtn.disabled = !hasDevice || (!busy && !hasFrame);
+    }
+  }
+
+  function toggleStream() {
+    if (isStreaming || streamStarting) {
+      stopStream();
+      return;
+    }
+    startStream();
+  }
+
   function stopStream(silent) {
     isStreaming = false;
+    streamStarting = false;
     clearTimers();
     closeWs();
     abortHttp();
@@ -1310,9 +1558,7 @@
     streamImage.removeAttribute('src');
     revokeObjectUrl();
     // keep last histogram when stopped
-    startBtn.disabled = !currentDevice;
-    stopBtn.disabled = true;
-    screenshotBtn.disabled = true;
+    syncStreamButtons();
     if (!silent) {
       updateStatus('Stopped', 'idle');
       log('Stopped');
@@ -1331,13 +1577,16 @@
   function startStream() {
     if (!currentDevice || !httpBase) {
       log('No device / service', 'error');
+      streamStarting = false;
+      syncStreamButtons();
       return;
     }
+    streamStarting = true;
+    syncStreamButtons();
     stopStream(true);
     isStreaming = true;
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    screenshotBtn.disabled = false;
+    streamStarting = false;
+    syncStreamButtons();
     resetMetrics();
     updateStatus('Connecting', 'connecting');
     log(currentMode.toUpperCase() + ' → ' + currentDevice);
@@ -1495,7 +1744,7 @@
       updateStatus('Live', 'connected');
       bumpFps();
       updateOverlay();
-      scheduleHistogram();
+      forceHistogram();
     };
     streamImage.onerror = function () {
       if (isStreaming && currentMode === 'mjpeg') {
@@ -1533,7 +1782,7 @@
       );
       if (res.ok) {
         applyMeta(headersToMeta(res), null, true);
-        scheduleHistogram();
+        forceHistogram();
       }
     } catch (e) {
       /* ignore */
@@ -1553,9 +1802,12 @@
     streamModes.forEach(function (m) {
       m.classList.toggle('active', m.dataset.mode === mode);
     });
+    saveViewerSettings();
     vscode.postMessage({ type: 'modeChanged', mode: mode });
     if (was && currentDevice) {
       startStream();
+    } else {
+      syncStreamButtons();
     }
   }
 
@@ -1567,7 +1819,7 @@
     stopStream(true);
     currentDevice = key;
     updateStatus('Selected', 'idle');
-    startBtn.disabled = false;
+    syncStreamButtons();
     vscode.postMessage({ type: 'deviceSelected', key: key });
   }
 
@@ -1618,32 +1870,88 @@
     ) {
       deviceSelect.value = prev;
       currentDevice = prev;
-      startBtn.disabled = false;
-    } else if (devices.length === 1) {
+    } else if (devices.length >= 1) {
+      // auto-pick first connected device so Start / auto-stream can run
       deviceSelect.value = devices[0].key;
       currentDevice = devices[0].key;
-      startBtn.disabled = false;
     } else if (prev && currentDevice === prev) {
       stopStream();
       currentDevice = null;
       updateStatus('Disconnected', 'error');
+    } else {
+      currentDevice = null;
+    }
+    syncStreamButtons();
+  }
+
+  function ensureHistEnabled() {
+    if (!histogramToggle) {
+      return;
+    }
+    // respect checkbox (default checked; may be restored from settings)
+    const on = !!histogramToggle.checked;
+    setHistUiEnabled(on);
+    if (on) {
+      applyHistDockHeight(histDockHeight);
     }
   }
 
+  /** Start stream + hist when device/service ready (idempotent). */
+  function tryAutoStartStream() {
+    if (!preferAutoStart || isStreaming || streamStarting) {
+      syncStreamButtons();
+      return;
+    }
+    if (!currentDevice || !httpBase) {
+      syncStreamButtons();
+      return;
+    }
+    ensureHistEnabled();
+    streamStarting = true;
+    syncStreamButtons();
+    updateStatus('Connecting', 'connecting');
+    requestAnimationFrame(function () {
+      applyHistDockHeight(histDockHeight);
+      if (!preferAutoStart || isStreaming) {
+        streamStarting = false;
+        syncStreamButtons();
+        return;
+      }
+      if (!currentDevice || !httpBase) {
+        streamStarting = false;
+        syncStreamButtons();
+        return;
+      }
+      startStream();
+    });
+  }
+
   deviceSelect.addEventListener('change', onDeviceChange);
-  startBtn.addEventListener('click', startStream);
-  stopBtn.addEventListener('click', function () {
-    stopStream();
-  });
+  if (streamBtn) {
+    streamBtn.addEventListener('click', toggleStream);
+  }
   screenshotBtn.addEventListener('click', takeScreenshot);
-  overlayToggle.addEventListener('change', updateOverlay);
+  if (fitViewBtn) {
+    fitViewBtn.addEventListener('click', function () {
+      resetView();
+    });
+  }
+  if (overlayToggle) {
+    overlayToggle.addEventListener('change', function () {
+      updateOverlay();
+      saveViewerSettings();
+    });
+  }
   if (histogramToggle) {
-    histogramToggle.addEventListener('change', onHistToggle);
+    histogramToggle.addEventListener('change', function () {
+      onHistToggle();
+      saveViewerSettings();
+    });
   }
   if (histSpace) {
     histSpace.addEventListener('change', function () {
-      histThrottle = 0;
-      scheduleHistogram();
+      forceHistogram();
+      saveViewerSettings();
     });
   }
   let histResizeTimer = null;
@@ -1673,39 +1981,104 @@
     if (message.type === 'init') {
       httpBase = message.httpBase || '';
       wsUrl = message.wsUrl || '';
-      currentMode = message.defaultMode || 'websocket';
-      if (currentMode !== 'http' && currentMode !== 'mjpeg') {
-        currentMode = 'websocket';
+      // host defaults only if user has not saved mode/interval
+      const st = (vscode.getState && vscode.getState()) || {};
+      const saved = st.viewerSettings || {};
+      if (!saved.mode) {
+        currentMode = message.defaultMode || 'websocket';
+        if (currentMode !== 'http' && currentMode !== 'mjpeg') {
+          currentMode = 'websocket';
+        }
       }
       streamModes.forEach(function (m) {
         m.classList.toggle('active', m.dataset.mode === currentMode);
       });
-      if (message.httpInterval) {
+      if (message.httpInterval && !saved.httpInterval && intervalInput) {
         intervalInput.value = String(message.httpInterval);
       }
+      // always auto-start stream + hist on webview open (host may still pass false)
+      preferAutoStart = message.autoStart !== false;
       fillDevices(message.devices || []);
       log(httpBase || 'no service');
-      // Hist defaults on: show dock immediately
-      if (histogramToggle && histogramToggle.checked) {
-        setHistUiEnabled(true);
-        applyHistDockHeight(histDockHeight);
-      }
-      if (message.autoStart && currentDevice) {
-        startStream();
-      }
+      ensureHistEnabled();
+      syncStreamButtons();
+      tryAutoStartStream();
     } else if (message.type === 'updateDeviceList') {
+      const hadDevice = !!currentDevice;
       fillDevices(message.devices || []);
+      // device connected after webview opened → start stream + hist
+      if (preferAutoStart && currentDevice && (!hadDevice || !isStreaming)) {
+        tryAutoStartStream();
+      }
     } else if (message.type === 'serviceEndpoints') {
       httpBase = message.httpBase || httpBase;
       wsUrl = message.wsUrl || wsUrl;
+      tryAutoStartStream();
     }
   });
 
   bindStageView();
   bindHistResize();
-  if (histogramToggle && histogramToggle.checked) {
-    setHistUiEnabled(true);
-    applyHistDockHeight(histDockHeight);
+  loadViewerSettings();
+  ensureHistEnabled();
+  updateOverlay();
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      toggleSettings();
+    });
   }
+  if (settingsClose) {
+    settingsClose.addEventListener('click', function () {
+      setSettingsOpen(false);
+    });
+  }
+  if (logBtn) {
+    logBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      toggleLog();
+    });
+  }
+  if (logClose) {
+    logClose.addEventListener('click', function () {
+      setLogOpen(false);
+    });
+  }
+  if (logClearBtn) {
+    logClearBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      clearLog();
+    });
+  }
+  if (histQuality) {
+    histQuality.addEventListener('change', applyHistQualityFromUi);
+  }
+  if (histIntervalInput) {
+    histIntervalInput.addEventListener('change', applyHistIntervalFromUi);
+  }
+  if (autoReconnect) {
+    autoReconnect.addEventListener('change', saveViewerSettings);
+  }
+  if (intervalInput) {
+    intervalInput.addEventListener('change', saveViewerSettings);
+  }
+  document.addEventListener('click', function (ev) {
+    const t = ev.target;
+    if (settingsPanel && !settingsPanel.hidden) {
+      if (
+        !settingsPanel.contains(t) &&
+        !(settingsBtn && settingsBtn.contains(t))
+      ) {
+        setSettingsOpen(false);
+      }
+    }
+    if (logPanel && !logPanel.hidden) {
+      if (!logPanel.contains(t) && !(logBtn && logBtn.contains(t))) {
+        setLogOpen(false);
+      }
+    }
+  });
+  ensureHistEnabled();
+  syncStreamButtons();
   vscode.postMessage({ type: 'ready' });
 })();
