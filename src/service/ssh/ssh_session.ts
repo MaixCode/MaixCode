@@ -1,4 +1,4 @@
-import { Client, type ClientChannel, type ConnectConfig } from "ssh2";
+import { Client, type ClientChannel, type ConnectConfig } from "@cweijan/ssh2";
 import { EventEmitter } from "vscode";
 import type { SshCredential } from "./types";
 
@@ -105,8 +105,8 @@ export class SshSession {
   setWindow(cols: number, rows: number): void {
     if (this.stream && !this.disposed) {
       try {
-        // ssh2: setWindow(rows, cols, height, width)
-        this.stream.setWindow(rows, cols, 0, 0);
+        // @cweijan/ssh2 current typings require string params here.
+        this.stream.setWindow(String(rows), String(cols), "0", "0");
       } catch {
         // ignore if stream already closed
       }

@@ -7,6 +7,8 @@
 .gitattributes
 .yarnrc
 .npmrc
+yarn.lock
+package-lock.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
 webpack.config.js
@@ -17,19 +19,23 @@ eslint.config.*
 vsc-extension-quickstart.md
 AGENTS.md
 *.vsix
+.commandcode/**
 
 # Sources & tests (bundled into dist/)
 src/**
 out/**
-node_modules/.bin
-node_modules/.cache
-node_modules/@types
-node_modules/*/test
-node_modules/*/example
 **/*.ts
 **/*.map
 **/*.test.js
 
-# Optional docs not needed at runtime
+# Optional docs not needed at runtime / marketplace
 CHANGELOG.md
 changelog.md
+README-en.md
+NOTICE
+
+# vsce uses --packagedDependencies ssh2: only the native SSH stack is
+# collected from node_modules. Pure JS deps are webpack-bundled.
+# Drop compile/test/docs junk and native build-only packages (nan/buildcheck).
+node_modules/**
+# !node_modules/ssh2/**

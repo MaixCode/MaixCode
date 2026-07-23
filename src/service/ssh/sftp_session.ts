@@ -1,5 +1,5 @@
-import { Client, type ConnectConfig, type SFTPWrapper } from "ssh2";
-import type { FileEntry, Stats } from "ssh2";
+import { Client, type ConnectConfig, type SFTPWrapper } from "@cweijan/ssh2";
+import type { FileEntry, Stats } from "@cweijan/ssh2";
 import type { SshCredential } from "./types";
 import { isAuthError, isNetworkError } from "./ssh_session";
 
@@ -527,11 +527,6 @@ export class SftpSession {
 
   private resetClient(): void {
     this.clearCaches();
-    try {
-      this.sftp?.end();
-    } catch {
-      // ignore
-    }
     this.sftp = undefined;
     try {
       this.client?.end();

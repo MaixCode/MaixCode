@@ -1,7 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import sharp from "sharp";
 import {
   APP_ICON_NAME,
   APP_YAML_NAME,
@@ -35,9 +34,6 @@ type IncomingMessage = {
 type ValidatedConfig =
   | { ok: true; config: AppConfig }
   | { ok: false; message: string };
-
-/** Default square size written for app icon (cover crop). */
-const ICON_SIZE = 256;
 
 /**
  * Visual app.yaml editor (WebviewPanel).
@@ -189,34 +185,27 @@ export class AppConfigEditor {
       if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
         return undefined;
       }
-      // Always present a 1:1 preview (cover crop), independent of source aspect
-      const buf = await sharp(abs)
-        .resize(ICON_SIZE, ICON_SIZE, {
-          fit: "cover",
-          position: "centre",
-        })
-        .png()
-        .toBuffer();
-      return `data:image/png;base64,${buf.toString("base64")}`;
+      // Preview as-is (no native image deps in the VSIX)
+      const raw = await fs.promises.readFile(abs);
+      const ext = path.extname(abs).toLowerCase();
+      const mime =
+        ext === ".png"
+          ? "image/png"
+          : ext === ".jpg" || ext === ".jpeg"
+            ? "image/jpeg"
+            : ext === ".gif"
+              ? "image/gif"
+              : ext === ".webp"
+                ? "image/webp"
+                : "application/octet-stream";
+      return `data:${mime};base64,${raw.toString("base64")}`;
     } catch {
-      try {
-        const raw = await fs.promises.readFile(abs);
-        const ext = path.extname(abs).toLowerCase();
-        const mime =
-          ext === ".png"
-            ? "image/png"
-            : ext === ".jpg" || ext === ".jpeg"
-              ? "image/jpeg"
-              : "application/octet-stream";
-        return `data:${mime};base64,${raw.toString("base64")}`;
-      } catch {
-        return undefined;
-      }
+      return undefined;
     }
   }
 
   /**
-   * Write icon as square PNG (cover crop) under project as app.png.
+   * Copy icon into the project as app.png (keeps source bytes; no native resize).
    */
   private async writeSquareIcon(
     projectDir: string,
@@ -224,24 +213,11 @@ export class AppConfigEditor {
   ): Promise<{ ok: true; rel: string } | { ok: false; message: string }> {
     const dest = path.join(projectDir, APP_ICON_NAME);
     try {
-      await sharp(sourceAbs)
-        .resize(ICON_SIZE, ICON_SIZE, {
-          fit: "cover",
-          position: "centre",
-        })
-        .png()
-        .toFile(dest);
-      log(`[AppConfigEditor] wrote 1:1 icon ${dest}`);
+      await fs.promises.copyFile(sourceAbs, dest);
+      log(`[AppConfigEditor] copied icon to ${dest}`);
       return { ok: true, rel: APP_ICON_NAME };
     } catch (e) {
-      // Fallback: plain copy if sharp fails
-      try {
-        await fs.promises.copyFile(sourceAbs, dest);
-        log(`[AppConfigEditor] sharp failed, copied icon to ${dest}: ${formatUnknown(e)}`);
-        return { ok: true, rel: APP_ICON_NAME };
-      } catch (e2) {
-        return { ok: false, message: formatUnknown(e2) };
-      }
+      return { ok: false, message: formatUnknown(e) };
     }
   }
 

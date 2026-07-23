@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type { SshSession } from "./ssh_session";
 
 /**
- * Bridges ssh2 shell stream to VS Code Pseudoterminal.
+ * Bridges @cweijan/ssh2 shell stream to VS Code Pseudoterminal.
  */
 export class SshPseudoTerminal implements vscode.Pseudoterminal {
   private writeEmitter = new vscode.EventEmitter<string>();

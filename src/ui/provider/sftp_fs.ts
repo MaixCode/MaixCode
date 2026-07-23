@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { Stats } from "ssh2";
+import type { Stats } from "@cweijan/ssh2";
 import { ConfigKeys, ConfigSection } from "../../constants";
 import { error, formatUnknown, log, warn } from "../../logger";
 import {
@@ -905,7 +905,7 @@ function mapSftpError(e: unknown, uri: vscode.Uri): Error {
   ) {
     return vscode.FileSystemError.FileNotFound(uri);
   }
-  // ssh2 often surfaces SSH_FX_FAILURE simply as "Failure" for broken links
+  // @cweijan/ssh2 often surfaces SSH_FX_FAILURE simply as "Failure" for broken links
   // or unsupported ops; treat as FileNotFound so Explorer stays usable.
   if (msg === "failure" || code === "4" || code === "SSH_FX_FAILURE") {
     return vscode.FileSystemError.FileNotFound(uri);

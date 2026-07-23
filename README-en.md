@@ -14,7 +14,7 @@ MaixCode is a VS Code extension for MaixCAM / MaixPy development, providing devi
 - **Code Run & Debug** — One-click Python execution with `maixpy` debug adapter; file & project modes
 - **Real-time Image Preview** — HTTP / WebSocket / MJPEG transports with zoom, pan, and screenshot
 - **Color Histogram** — Live RGB / GRAY / LAB / YUV / HSV per-channel charts with hover tooltips
-- **SSH Terminal** — Built-in SSH terminal via `ssh2`; multi-session support
+- **SSH Terminal** — Built-in SSH terminal via `@cweijan/ssh2`; multi-session support
 - **SFTP File Management** — Virtual filesystem (`maixsftp://`) mounted into VS Code Explorer
 - **Project Packaging** — `app.yaml` config → zip package → install to device → run
 - **Runtime Installer** — Fetch and flash MaixVision runtime from Sipeed cloud

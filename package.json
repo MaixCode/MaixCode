@@ -11,7 +11,7 @@
     "Other"
   ],
   "activationEvents": [
-    "*"
+    "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "license": "MIT",
@@ -763,14 +763,13 @@
     "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
-    "package:vsix": "vsce package --no-dependencies"
+    "package:vsix": "vsce package --yarn --dependencies"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/mocha": "^10.0.7",
     "@types/multicast-dns": "^7.2.4",
     "@types/node": "20.x",
-    "@types/ssh2": "^1.15.5",
     "@types/vscode": "^1.92.0",
     "@types/ws": "^8.5.12",
     "@types/yamljs": "^0.2.34",
@@ -794,8 +793,7 @@
     "express": "^4.21.2",
     "jszip": "^3.10.1",
     "multicast-dns": "^7.2.5",
-    "sharp": "^0.33.5",
-    "ssh2": "^1.17.0",
+    "@cweijan/ssh2": "^2.0.2",
     "ws": "^8.18.0",
     "yamljs": "^0.3.0"
   },

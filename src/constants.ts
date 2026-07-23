@@ -7,7 +7,7 @@ export namespace Commands {
   export const discoverDevice = "maixcode.discoverDevice";
   export const refreshDeviceData = "maixcode.refreshDeviceData";
 
-  /** Open interactive SSH terminal to device (ssh2 + Pseudoterminal) */
+  /** Open interactive SSH terminal to device (@cweijan/ssh2 + Pseudoterminal) */
   export const openDeviceTerminal = "maixcode.openDeviceTerminal";
 
   /** Open device SFTP as virtual FS workspace folder */
