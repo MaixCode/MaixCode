@@ -78,9 +78,15 @@ export function error(message: string | Error, notify = false) {
 
   if (notify) {
     vscode.window
-      .showErrorMessage(`MaixCode: ${typeof message === "string" ? message : message.message}`, "Show Log")
+      .showErrorMessage(
+        vscode.l10n.t(
+          "MaixCode: {0}",
+          typeof message === "string" ? message : message.message
+        ),
+        vscode.l10n.t("Show Log")
+      )
       .then((selection) => {
-        if (selection === "Show Log") {
+        if (selection === vscode.l10n.t("Show Log")) {
           showLog();
         }
       });

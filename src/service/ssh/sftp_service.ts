@@ -95,7 +95,7 @@ export class SftpService {
     }
     const host = (req.host || "").trim();
     if (!host) {
-      vscode.window.showErrorMessage("No device IP for SFTP");
+      vscode.window.showErrorMessage(vscode.l10n.t("No device IP for SFTP"));
       return;
     }
 
@@ -104,11 +104,12 @@ export class SftpService {
     const timeoutMs = cfg.get<number>(ConfigKeys.sshConnectTimeoutMs, 10000);
     const credentials = readSshCredentials(cfg);
     if (!credentials.length) {
+      const openSettings = vscode.l10n.t("Open Settings");
       const pick = await vscode.window.showErrorMessage(
-        "No SSH credentials configured (maixcode.sshCredentials).",
-        "Open Settings"
+        vscode.l10n.t("No SSH credentials configured (maixcode.sshCredentials)."),
+        openSettings
       );
-      if (pick === "Open Settings") {
+      if (pick === openSettings) {
         await vscode.commands.executeCommand(
           "workbench.action.openSettings",
           "maixcode.sshCredentials"
@@ -155,7 +156,7 @@ export class SftpService {
         location: quiet
           ? vscode.ProgressLocation.Window
           : vscode.ProgressLocation.Notification,
-        title: `SFTP: connecting ${host}...`,
+        title: vscode.l10n.t("SFTP: connecting {0}...", host),
         cancellable: false,
       },
       async () => {
@@ -194,7 +195,7 @@ export class SftpService {
           await this.ensureWorkspaceFolder(folderUri, name);
           if (!quiet) {
             await vscode.commands.executeCommand("revealInExplorer", folderUri);
-            vscode.window.showInformationMessage(`Opened ${name}`);
+            vscode.window.showInformationMessage(vscode.l10n.t("Opened {0}", name));
           }
           log(
             `[SFTP] opened ${folderUri.toString()} bookmarks=${bookmarks
@@ -271,7 +272,7 @@ export class SftpService {
    */
   async filterUri(uri: vscode.Uri): Promise<void> {
     if (uri.scheme !== SftpFileSystemProvider.scheme) {
-      vscode.window.showErrorMessage("Not a MaixSFTP path");
+      vscode.window.showErrorMessage(vscode.l10n.t("Not a MaixSFTP path"));
       return;
     }
     const remote = this.fs.remotePathOf(uri);
@@ -284,7 +285,7 @@ export class SftpService {
     ];
     if (list.some((p) => p === pattern || p === basename)) {
       vscode.window.showInformationMessage(
-        `Already filtered: ${pattern}`
+        vscode.l10n.t("Already filtered: {0}", pattern)
       );
       return;
     }
@@ -308,12 +309,14 @@ export class SftpService {
     );
     log(`[SFTP] filter added: ${pattern}`);
     if (!show) {
+      const showFilteredItems = vscode.l10n.t("Show Filtered Items");
+      const editPatterns = vscode.l10n.t("Edit Patterns");
       const pick = await vscode.window.showInformationMessage(
-        `Filtered "${basename}" (pattern: ${pattern}). Hidden in Explorer.`,
-        "Show Filtered Items",
-        "Edit Patterns"
+        vscode.l10n.t('Filtered "{0}" (pattern: {1}). Hidden in Explorer.', basename, pattern),
+        showFilteredItems,
+        editPatterns
       );
-      if (pick === "Show Filtered Items") {
+      if (pick === showFilteredItems) {
         this.fs.applyFilterState({
           patterns: list,
           readOnly,
@@ -336,7 +339,7 @@ export class SftpService {
         void vscode.commands.executeCommand(
           "workbench.files.action.refreshFilesExplorer"
         );
-      } else if (pick === "Edit Patterns") {
+      } else if (pick === editPatterns) {
         await vscode.commands.executeCommand(
           "workbench.action.openSettings",
           "maixcode.sftpHidePatterns"
@@ -344,14 +347,14 @@ export class SftpService {
       }
     } else {
       vscode.window.showInformationMessage(
-        `Filtered "${basename}" — badge "H" marks filtered items.`
+        vscode.l10n.t('Filtered "{0}" — badge "H" marks filtered items.', basename)
       );
     }
   }
 
   async unfilterUri(uri: vscode.Uri): Promise<void> {
     if (uri.scheme !== SftpFileSystemProvider.scheme) {
-      vscode.window.showErrorMessage("Not a MaixSFTP path");
+      vscode.window.showErrorMessage(vscode.l10n.t("Not a MaixSFTP path"));
       return;
     }
     const remote = normalizeRemotePath(this.fs.remotePathOf(uri));
@@ -378,12 +381,12 @@ export class SftpService {
     let finalPatterns: string[];
     if (next.length === list.length) {
       if (!list.length) {
-        vscode.window.showInformationMessage("No filter patterns configured.");
+        vscode.window.showInformationMessage(vscode.l10n.t("No filter patterns configured."));
         return;
       }
       const picked = await vscode.window.showQuickPick(list, {
-        title: "Remove filter pattern",
-        placeHolder: "Select pattern to remove",
+        title: vscode.l10n.t("Remove filter pattern"),
+        placeHolder: vscode.l10n.t("Select pattern to remove"),
       });
       if (!picked) {
         return;
@@ -419,7 +422,11 @@ export class SftpService {
       "workbench.files.action.refreshFilesExplorer"
     );
     vscode.window.showInformationMessage(
-      `Unfiltered: ${basename}${match ? ` (was ${match})` : ""}`
+      vscode.l10n.t(
+        "Unfiltered: {0}{1}",
+        basename,
+        match ? vscode.l10n.t(" (was {0})", match) : ""
+      )
     );
   }
 
@@ -454,8 +461,8 @@ export class SftpService {
     );
     vscode.window.showInformationMessage(
       nextVal
-        ? 'Show Filtered Items: ON (filtered entries show badge "H")'
-        : "Show Filtered Items: OFF (filtered entries hidden)"
+        ? vscode.l10n.t('Show Filtered Items: ON (filtered entries show badge "H")')
+        : vscode.l10n.t("Show Filtered Items: OFF (filtered entries hidden)")
     );
   }
 
@@ -778,7 +785,7 @@ export class SftpService {
 
 function warnUpdateFailed(): void {
   vscode.window.showWarningMessage(
-    "Could not add SFTP folder to workspace. Open the URI from the command palette if needed."
+    vscode.l10n.t("Could not add SFTP folder to workspace. Open the URI from the command palette if needed.")
   );
 }
 

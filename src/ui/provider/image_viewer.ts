@@ -94,7 +94,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     if (!this.imagePanel) {
       this.imagePanel = vscode.window.createWebviewPanel(
         "maixcodeImagePreview",
-        "MaixCAM Image",
+        vscode.l10n.t("MaixCAM Image"),
         vscode.ViewColumn.Beside,
         {
           enableScripts: true,
@@ -247,12 +247,12 @@ export class ImageViewer implements vscode.WebviewViewProvider {
 
   private async saveScreenshotFromStore(key?: string): Promise<void> {
     if (!key) {
-      vscode.window.showWarningMessage("No device selected for screenshot");
+      vscode.window.showWarningMessage(vscode.l10n.t("No device selected for screenshot"));
       return;
     }
     const frame = this.deps.imageService.store.getFrame(key);
     if (!frame) {
-      vscode.window.showWarningMessage("No frame available to save");
+      vscode.window.showWarningMessage(vscode.l10n.t("No frame available to save"));
       return;
     }
     const ext = frame.mime.includes("png") ? "png" : "jpg";
@@ -260,13 +260,13 @@ export class ImageViewer implements vscode.WebviewViewProvider {
       defaultUri: vscode.Uri.file(
         `maixcam-${key}-${frame.timestamp}.${ext}`
       ),
-      filters: { Images: [ext, "png", "jpg", "jpeg"] },
+      filters: { [vscode.l10n.t("Images")]: [ext, "png", "jpg", "jpeg"] },
     });
     if (!uri) {
       return;
     }
     await vscode.workspace.fs.writeFile(uri, Buffer.from(frame.buffer));
-    vscode.window.showInformationMessage(`Saved screenshot to ${uri.fsPath}`);
+    vscode.window.showInformationMessage(vscode.l10n.t("Saved screenshot to {0}", uri.fsPath));
   }
 
   private async saveScreenshotDataUrl(
@@ -287,13 +287,22 @@ export class ImageViewer implements vscode.WebviewViewProvider {
       defaultUri: vscode.Uri.file(
         `maixcam-${key || "shot"}-${Date.now()}.png`
       ),
-      filters: { Images: ["png"] },
+      filters: { [vscode.l10n.t("Images")]: ["png"] },
     });
     if (!uri) {
       return;
     }
     await vscode.workspace.fs.writeFile(uri, buf);
-    vscode.window.showInformationMessage(`Saved screenshot to ${uri.fsPath}`);
+    vscode.window.showInformationMessage(vscode.l10n.t("Saved screenshot to {0}", uri.fsPath));
+  }
+
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   private getHtml(webview: vscode.Webview): string {
@@ -321,41 +330,57 @@ export class ImageViewer implements vscode.WebviewViewProvider {
       `connect-src http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*`,
     ].join("; ");
 
+    const tDevice = this.escapeHtml(vscode.l10n.t("Device"));
+    const tTransport = this.escapeHtml(vscode.l10n.t("Transport"));
+    const tStart = this.escapeHtml(vscode.l10n.t("Start"));
+    const tStop = this.escapeHtml(vscode.l10n.t("Stop"));
+    const tShot = this.escapeHtml(vscode.l10n.t("Shot"));
+    const tScreenshot = this.escapeHtml(vscode.l10n.t("Screenshot"));
+    const tInterval = this.escapeHtml(vscode.l10n.t("HTTP poll interval (ms)"));
+    const tOverlay = this.escapeHtml(vscode.l10n.t("Show overlay"));
+    const tHist = this.escapeHtml(vscode.l10n.t("Color histogram"));
+    const tHistSpace = this.escapeHtml(vscode.l10n.t("Histogram color space"));
+    const tAuto = this.escapeHtml(vscode.l10n.t("Auto"));
+    const tAutoReconnect = this.escapeHtml(vscode.l10n.t("Auto reconnect"));
+    const tIdle = this.escapeHtml(vscode.l10n.t("Idle"));
+    const tMetrics = this.escapeHtml(vscode.l10n.t("FPS · KB · resolution · latency"));
+    const tHistogram = this.escapeHtml(vscode.l10n.t("Histogram"));
+    const tTitle = this.escapeHtml(vscode.l10n.t("MaixCAM Image"));
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MaixCAM Image</title>
+  <title>${tTitle}</title>
   <link rel="stylesheet" href="${styleUri}" />
 </head>
 <body>
   <div class="toolbar">
-    <select id="deviceSelect" title="Device">
-      <option value="" disabled selected>Device</option>
+    <select id="deviceSelect" title="${tDevice}">
+      <option value="" disabled selected>${tDevice}</option>
     </select>
-    <div class="modes" role="group" aria-label="Transport">
+    <div class="modes" role="group" aria-label="${tTransport}">
       <button type="button" class="stream-mode" data-mode="http">HTTP</button>
       <button type="button" class="stream-mode active" data-mode="websocket">WS</button>
       <button type="button" class="stream-mode" data-mode="mjpeg">MJPEG</button>
     </div>
-    <button type="button" class="btn primary" id="startBtn" disabled>Start</button>
-    <button type="button" class="btn" id="stopBtn" disabled>Stop</button>
-    <button type="button" class="btn" id="screenshotBtn" disabled title="Screenshot">Shot</button>
-    <input type="number" id="intervalInput" value="33" min="16" max="2000" step="1" title="HTTP poll interval (ms)" />
-    <label class="chk" title="Show overlay"><input type="checkbox" id="overlayToggle" checked /> HUD</label>
-    <label class="chk" title="Color histogram"><input type="checkbox" id="histogramToggle" /> Hist</label>
-    <select id="histSpace" title="Histogram color space" disabled>
+    <button type="button" class="btn primary" id="startBtn" disabled>${tStart}</button>
+    <button type="button" class="btn" id="stopBtn" disabled>${tStop}</button>
+    <button type="button" class="btn" id="screenshotBtn" disabled title="${tScreenshot}">${tShot}</button>
+    <input type="number" id="intervalInput" value="33" min="16" max="2000" step="1" title="${tInterval}" />
+    <label class="chk" title="${tOverlay}"><input type="checkbox" id="overlayToggle" checked /> HUD</label>
+    <label class="chk" title="${tHist}"><input type="checkbox" id="histogramToggle" /> Hist</label>
+    <select id="histSpace" title="${tHistSpace}" disabled>
       <option value="rgb" selected>RGB</option>
       <option value="gray">GRAY</option>
       <option value="lab">LAB</option>
       <option value="yuv">YUV</option>
       <option value="hsv">HSV</option>
     </select>
-    <label class="chk" title="Auto reconnect"><input type="checkbox" id="autoReconnect" checked /> Auto</label>
-    <div class="status idle" id="connectionStatus">Idle</div>
-    <div class="metrics-inline" title="FPS · KB · resolution · latency">
+    <label class="chk" title="${tAutoReconnect}"><input type="checkbox" id="autoReconnect" checked /> ${tAuto}</label>
+    <div class="status idle" id="connectionStatus">${tIdle}</div>
+    <div class="metrics-inline" title="${tMetrics}">
       <span><b id="fpsValue">0</b> fps</span>
       <span><b id="frameSizeValue">0</b> KB</span>
       <span id="resolutionValue">-</span>
@@ -370,7 +395,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
   </div>
   <div class="hist-dock" id="histPanel" hidden>
     <div class="hist-dock-head">
-      <span class="hist-dock-title">Histogram</span>
+      <span class="hist-dock-title">${tHistogram}</span>
       <span class="hist-dock-meta" id="histMeta">-</span>
     </div>
     <div class="hist-charts" id="histCharts"></div>

@@ -28,7 +28,7 @@ export class SshTerminalService {
     }
     const host = (req.host || "").trim();
     if (!host) {
-      vscode.window.showErrorMessage("No device IP for SSH terminal");
+      vscode.window.showErrorMessage(vscode.l10n.t("No device IP for SSH terminal"));
       return;
     }
 
@@ -40,11 +40,12 @@ export class SshTerminalService {
     const credentials = readSshCredentials(cfg);
 
     if (!credentials.length) {
+      const openSettings = vscode.l10n.t("Open Settings");
       const pick = await vscode.window.showErrorMessage(
-        "No SSH credentials configured (maixcode.sshCredentials).",
-        "Open Settings"
+        vscode.l10n.t("No SSH credentials configured (maixcode.sshCredentials)."),
+        openSettings
       );
-      if (pick === "Open Settings") {
+      if (pick === openSettings) {
         await vscode.commands.executeCommand(
           "workbench.action.openSettings",
           "maixcode.sshCredentials"

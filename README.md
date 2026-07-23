@@ -77,6 +77,16 @@ MaixCode 是一个用于 MaixCAM 设备开发的 VSCode 扩展，让您能够方
 }
 ```
 
+
+## 语言 / Language
+
+扩展界面跟随 VS Code 显示语言：
+
+- **English**：默认（`package.nls.json` + 源码中的英文 `vscode.l10n.t` 字符串）
+- **简体中文**：当 VS Code 显示语言为中文（`zh-cn`）时自动使用 `package.nls.zh-cn.json` 与 `l10n/bundle.l10n.zh-cn.json`
+
+可在命令面板执行 **Configure Display Language** 切换。
+
 ## 已知问题
 
 - 当多个设备同时连接时，可能需要手动选择当前活动设备

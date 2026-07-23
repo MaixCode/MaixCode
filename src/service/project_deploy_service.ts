@@ -38,7 +38,7 @@ export class ProjectDeployService {
     const connected = this.deps.getConnectedDevices();
     if (connected.length === 0) {
       vscode.window.showErrorMessage(
-        "No device connected. Connect a MaixCAM from the MaixCode sidebar first."
+        vscode.l10n.t("No device connected. Connect a MaixCAM from the MaixCode sidebar first.")
       );
       return undefined;
     }
@@ -53,7 +53,7 @@ export class ProjectDeployService {
     const dir = this.packages.resolveProjectDir(hint);
     if (!dir) {
       vscode.window.showErrorMessage(
-        "No project folder found. Open a workspace folder or a file under the project."
+        vscode.l10n.t("No project folder found. Open a workspace folder or a file under the project.")
       );
       return undefined;
     }
@@ -70,7 +70,7 @@ export class ProjectDeployService {
       return;
     }
     vscode.window.showInformationMessage(
-      `Saved app.yaml for ${config.name} (${config.id} v${config.version}) in ${dir}`
+      vscode.l10n.t("Saved app.yaml for {0} ({1} v{2}) in {3}", config.name, config.id, config.version, dir)
     );
   }
 
@@ -87,12 +87,13 @@ export class ProjectDeployService {
     }
 
     if (!infoResult.config) {
+      const configure = vscode.l10n.t("Configure");
       const go = await vscode.window.showInformationMessage(
-        "No app.yaml found. Configure the project now?",
-        "Configure",
-        "Cancel"
+        vscode.l10n.t("No app.yaml found. Configure the project now?"),
+        configure,
+        vscode.l10n.t("Cancel")
       );
-      if (go !== "Configure") {
+      if (go !== configure) {
         return undefined;
       }
       const config = await this.packages.configureInteractive(dir);
@@ -100,12 +101,13 @@ export class ProjectDeployService {
         return undefined;
       }
     } else if (!infoResult.config.files?.length) {
+      const configure = vscode.l10n.t("Configure");
       const go = await vscode.window.showInformationMessage(
-        "app.yaml has no files list. Reconfigure?",
-        "Configure",
-        "Cancel"
+        vscode.l10n.t("app.yaml has no files list. Reconfigure?"),
+        configure,
+        vscode.l10n.t("Cancel")
       );
-      if (go !== "Configure") {
+      if (go !== configure) {
         return undefined;
       }
       const config = await this.packages.configureInteractive(dir);
@@ -117,26 +119,28 @@ export class ProjectDeployService {
     return vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: "MaixCode: Packaging app...",
+        title: vscode.l10n.t("MaixCode: Packaging app..."),
         cancellable: false,
       },
       async () => {
         const result = await this.packages.packageApp(dir);
         if (!result.ok) {
-          vscode.window.showErrorMessage(`Package failed: ${result.message}`);
+          vscode.window.showErrorMessage(vscode.l10n.t("Package failed: {0}", result.message));
           return undefined;
         }
+        const reveal = vscode.l10n.t("Reveal in Explorer");
+        const installTo = vscode.l10n.t("Install to Device");
         const open = await vscode.window.showInformationMessage(
-          `Packaged ${result.info.name} (${this.packages.formatSize(result.info.size)})`,
-          "Reveal in Explorer",
-          "Install to Device"
+          vscode.l10n.t("Packaged {0} ({1})", result.info.name, this.packages.formatSize(result.info.size)),
+          reveal,
+          installTo
         );
-        if (open === "Reveal in Explorer") {
+        if (open === reveal) {
           await vscode.commands.executeCommand(
             "revealFileInOS",
             vscode.Uri.file(result.info.path)
           );
-        } else if (open === "Install to Device") {
+        } else if (open === installTo) {
           await this.installPackagePath(result.info.path, result.config);
         }
         return result.info;
@@ -160,17 +164,18 @@ export class ProjectDeployService {
       return;
     }
     if (!pkg.info) {
+      const packageLabel = vscode.l10n.t("Package");
       const go = await vscode.window.showInformationMessage(
-        "No package zip found under dist/. Package now?",
-        "Package",
-        "Cancel"
+        vscode.l10n.t("No package zip found under dist/. Package now?"),
+        packageLabel,
+        vscode.l10n.t("Cancel")
       );
-      if (go !== "Package") {
+      if (go !== packageLabel) {
         return;
       }
       const built = await this.packages.packageApp(dir);
       if (!built.ok) {
-        vscode.window.showErrorMessage(`Package failed: ${built.message}`);
+        vscode.window.showErrorMessage(vscode.l10n.t("Package failed: {0}", built.message));
         return;
       }
       pkg = { ok: true, config: built.config, info: built.info };
@@ -187,17 +192,17 @@ export class ProjectDeployService {
     config?: AppConfig
   ): Promise<void> {
     if (this.installing) {
-      vscode.window.showWarningMessage("An install is already in progress.");
+      vscode.window.showWarningMessage(vscode.l10n.t("An install is already in progress."));
       return;
     }
     const device = this.pickDevice();
     if (!device?.wss?.isConnected) {
-      vscode.window.showErrorMessage("Device is not connected.");
+      vscode.window.showErrorMessage(vscode.l10n.t("Device is not connected."));
       return;
     }
     const wss = device.wss;
     if (typeof wss.installApp !== "function") {
-      vscode.window.showErrorMessage("Transport does not support installApp.");
+      vscode.window.showErrorMessage(vscode.l10n.t("Transport does not support installApp."));
       return;
     }
 
@@ -206,7 +211,7 @@ export class ProjectDeployService {
       zipData = await this.packages.readZipFile(zipPath);
     } catch (e) {
       vscode.window.showErrorMessage(
-        `Cannot read package: ${formatUnknown(e)}`
+        vscode.l10n.t("Cannot read package: {0}", formatUnknown(e))
       );
       return;
     }
@@ -222,8 +227,8 @@ export class ProjectDeployService {
         {
           location: vscode.ProgressLocation.Notification,
           title: config
-            ? `Installing ${config.name} v${config.version}...`
-            : "Installing app to device...",
+            ? vscode.l10n.t("Installing {0} v{1}...", config.name, config.version)
+            : vscode.l10n.t("Installing app to device..."),
           cancellable: false,
         },
         async (progress) => {
@@ -233,7 +238,7 @@ export class ProjectDeployService {
           });
         }
       );
-      vscode.window.showInformationMessage("App installed on device.");
+      vscode.window.showInformationMessage(vscode.l10n.t("App installed on device."));
     } catch (e) {
       error(`[ProjectDeploy] install failed: ${formatUnknown(e)}`, true);
     } finally {
@@ -324,7 +329,7 @@ export class ProjectDeployService {
     const hasMain = await this.packages.ensureMainPy(dir);
     if (!hasMain) {
       vscode.window.showErrorMessage(
-        `main.py not found in ${dir}. Run Project requires a main.py entry.`
+        vscode.l10n.t("main.py not found in {0}. Run Project requires a main.py entry.", dir)
       );
       return;
     }
@@ -343,24 +348,33 @@ export class ProjectDeployService {
     showLog();
     const packed = await this.packages.packageFolderForRun(dir);
     if (!packed.ok) {
-      vscode.window.showErrorMessage(`Run Project failed: ${packed.message}`);
+      vscode.window.showErrorMessage(vscode.l10n.t("Run Project failed: {0}", packed.message));
       return;
     }
 
     const sizeMb = packed.info.size / 1024 / 1024;
     if (sizeMb > RUN_PROJECT_BLOCK_MB) {
       vscode.window.showErrorMessage(
-        `Project zip is ${sizeMb.toFixed(1)} MB (limit ${RUN_PROJECT_BLOCK_MB} MB). Reduce size or exclude assets.`
+        vscode.l10n.t(
+          "Project zip is {0} MB (limit {1} MB). Reduce size or exclude assets.",
+          sizeMb.toFixed(1),
+          String(RUN_PROJECT_BLOCK_MB)
+        )
       );
       return;
     }
     if (sizeMb > RUN_PROJECT_WARN_MB) {
+      const continueLabel = vscode.l10n.t("Continue");
       const cont = await vscode.window.showWarningMessage(
-        `Project zip is ${sizeMb.toFixed(1)} MB (over ${RUN_PROJECT_WARN_MB} MB). Continue?`,
-        "Continue",
-        "Cancel"
+        vscode.l10n.t(
+          "Project zip is {0} MB (over {1} MB). Continue?",
+          sizeMb.toFixed(1),
+          String(RUN_PROJECT_WARN_MB)
+        ),
+        continueLabel,
+        vscode.l10n.t("Cancel")
       );
-      if (cont !== "Continue") {
+      if (cont !== continueLabel) {
         return;
       }
     }
@@ -374,7 +388,7 @@ export class ProjectDeployService {
       const started = await vscode.debug.startDebugging(undefined, {
         type: DebugTypeName,
         request: "launch",
-        name: "MaixPy: Run Project on Device",
+        name: vscode.l10n.t("MaixPy: Run Project on Device"),
         program: dir,
         mode: "project",
         projectDir: dir,
@@ -384,7 +398,7 @@ export class ProjectDeployService {
       log(`[ProjectDeploy] startDebugging project returned ${started}`);
       if (!started) {
         vscode.window.showErrorMessage(
-          "Failed to start MaixPy debug session for Run Project."
+          vscode.l10n.t("Failed to start MaixPy debug session for Run Project.")
         );
       }
     } catch (e) {
@@ -407,7 +421,7 @@ export class ProjectDeployService {
     }
     const built = await this.packages.packageApp(dir);
     if (!built.ok) {
-      vscode.window.showErrorMessage(`Package failed: ${built.message}`);
+      vscode.window.showErrorMessage(vscode.l10n.t("Package failed: {0}", built.message));
       return;
     }
     await this.installPackagePath(built.info.path, built.config);

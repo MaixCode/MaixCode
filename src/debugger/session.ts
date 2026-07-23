@@ -177,7 +177,7 @@ export class MaixPyDebugSession extends DebugSession {
 
       if (connected.length === 0) {
         const msg =
-          "No device connected. Connect a MaixCAM from the MaixCode sidebar first.";
+          vscode.l10n.t("No device connected. Connect a MaixCAM from the MaixCode sidebar first.");
         error(msg, true);
         this.consoleError(msg);
         this.sendErrorResponse(response, 3, msg);

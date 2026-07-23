@@ -23,9 +23,9 @@ export class StatusBar {
       vscode.StatusBarAlignment.Left,
       99
     );
-    this.runFileItem.name = "MaixCode Run File";
-    this.runFileItem.text = "$(play) Run File";
-    this.runFileItem.tooltip = "Run current Python file on MaixCAM";
+    this.runFileItem.name = vscode.l10n.t("MaixCode Run File");
+    this.runFileItem.text = vscode.l10n.t("$(play) Run File");
+    this.runFileItem.tooltip = vscode.l10n.t("Run current Python file on MaixCAM");
     this.runFileItem.command = Commands.runOnDevice;
     this.runFileItem.show();
 
@@ -33,10 +33,10 @@ export class StatusBar {
       vscode.StatusBarAlignment.Left,
       98
     );
-    this.runProjectItem.name = "MaixCode Run Project";
-    this.runProjectItem.text = "$(run-all) Run Project";
+    this.runProjectItem.name = vscode.l10n.t("MaixCode Run Project");
+    this.runProjectItem.text = vscode.l10n.t("$(run-all) Run Project");
     this.runProjectItem.tooltip =
-      "Package workspace project and run on MaixCAM (RunProject)";
+      vscode.l10n.t("Package workspace project and run on MaixCAM (RunProject)");
     this.runProjectItem.command = Commands.runProject;
     this.runProjectItem.show();
 
@@ -56,21 +56,21 @@ export class StatusBar {
     if (online) {
       this.runFileItem.backgroundColor = undefined;
       this.runProjectItem.backgroundColor = undefined;
-      this.runFileItem.tooltip = "Run current Python file on MaixCAM";
+      this.runFileItem.tooltip = vscode.l10n.t("Run current Python file on MaixCAM");
       this.runProjectItem.tooltip =
-        "Package workspace project and run on MaixCAM (RunProject)";
+        vscode.l10n.t("Package workspace project and run on MaixCAM (RunProject)");
     } else {
       this.runFileItem.tooltip =
-        "Run current file (connect a MaixCAM first)";
+        vscode.l10n.t("Run current file (connect a MaixCAM first)");
       this.runProjectItem.tooltip =
-        "Run project (connect a MaixCAM first)";
+        vscode.l10n.t("Run project (connect a MaixCAM first)");
     }
     if (status === Status.running) {
-      this.runFileItem.text = "$(debug-restart) Re-run File";
-      this.runProjectItem.text = "$(debug-restart) Re-run Project";
+      this.runFileItem.text = vscode.l10n.t("$(debug-restart) Re-run File");
+      this.runProjectItem.text = vscode.l10n.t("$(debug-restart) Re-run Project");
     } else {
-      this.runFileItem.text = "$(play) Run File";
-      this.runProjectItem.text = "$(run-all) Run Project";
+      this.runFileItem.text = vscode.l10n.t("$(play) Run File");
+      this.runProjectItem.text = vscode.l10n.t("$(run-all) Run Project");
     }
   }
 
@@ -83,10 +83,10 @@ export class StatusBar {
         );
         this.statusBarItem.color = undefined;
         this.statusBarItem.text = device
-          ? `$(play) MaixCode: Running · ${device}`
-          : "$(play) MaixCode: Running";
+          ? vscode.l10n.t("$(play) MaixCode: Running · {0}", device)
+          : vscode.l10n.t("$(play) MaixCode: Running");
         this.statusBarItem.tooltip =
-          "Program is running on the device — click to re-run file";
+          vscode.l10n.t("Program is running on the device — click to re-run file");
         this.statusBarItem.command = Commands.runOnDevice;
         break;
       }
@@ -94,19 +94,19 @@ export class StatusBar {
         this.statusBarItem.backgroundColor = undefined;
         this.statusBarItem.color = undefined;
         this.statusBarItem.text = device
-          ? `$(vm-active) MaixCode: Online · ${device}`
-          : "$(vm-active) MaixCode: Online";
+          ? vscode.l10n.t("$(vm-active) MaixCode: Online · {0}", device)
+          : vscode.l10n.t("$(vm-active) MaixCode: Online");
         this.statusBarItem.tooltip =
-          "Device connected — click to connect another";
+          vscode.l10n.t("Device connected — click to connect another");
         this.statusBarItem.command = Commands.connectDevice;
         break;
       }
       case Status.connecting: {
         this.statusBarItem.backgroundColor = undefined;
         this.statusBarItem.text = device
-          ? `$(sync~spin) MaixCode: Connecting · ${device}`
-          : "$(sync~spin) MaixCode: Connecting";
-        this.statusBarItem.tooltip = "Connecting to device…";
+          ? vscode.l10n.t("$(sync~spin) MaixCode: Connecting · {0}", device)
+          : vscode.l10n.t("$(sync~spin) MaixCode: Connecting");
+        this.statusBarItem.tooltip = vscode.l10n.t("Connecting to device…");
         this.statusBarItem.command = Commands.connectDevice;
         break;
       }
@@ -114,8 +114,8 @@ export class StatusBar {
         this.statusBarItem.backgroundColor = new vscode.ThemeColor(
           "statusBarItem.errorBackground"
         );
-        this.statusBarItem.text = "$(error) MaixCode: Error";
-        this.statusBarItem.tooltip = "MaixCode error";
+        this.statusBarItem.text = vscode.l10n.t("$(error) MaixCode: Error");
+        this.statusBarItem.tooltip = vscode.l10n.t("MaixCode error");
         this.statusBarItem.command = Commands.connectDevice;
         break;
       }
@@ -124,8 +124,8 @@ export class StatusBar {
         this.statusBarItem.backgroundColor = new vscode.ThemeColor(
           "statusBarItem.warningBackground"
         );
-        this.statusBarItem.text = "$(vm-outline) MaixCode: Offline";
-        this.statusBarItem.tooltip = "No device connected — click to connect";
+        this.statusBarItem.text = vscode.l10n.t("$(vm-outline) MaixCode: Offline");
+        this.statusBarItem.tooltip = vscode.l10n.t("No device connected — click to connect");
         this.statusBarItem.command = Commands.connectDevice;
         break;
       }
@@ -156,7 +156,7 @@ export class StatusBar {
   }
 
   public update(text: string) {
-    this.statusBarItem.text = `MaixCode: ${text}`;
+    this.statusBarItem.text = vscode.l10n.t("MaixCode: {0}", text);
   }
 
   public dispose() {

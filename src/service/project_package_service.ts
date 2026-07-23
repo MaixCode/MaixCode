@@ -230,24 +230,24 @@ export class ProjectPackageService {
       }
       const config = read.config;
       if (!config) {
-        return { ok: false, message: "app.yaml not found. Configure the project first." };
+        return { ok: false, message: vscode.l10n.t("app.yaml not found. Configure the project first.") };
       }
       if (!config.id || !isValidAppId(config.id)) {
         return {
           ok: false,
-          message: "app.yaml id is missing or invalid (must match /^[a-zA-Z][a-zA-Z0-9_]*$/).",
+          message: vscode.l10n.t("app.yaml id is missing or invalid (must match /^[a-zA-Z][a-zA-Z0-9_]*$/)."),
         };
       }
       if (!config.version || !isValidAppVersion(config.version)) {
         return {
           ok: false,
-          message: "app.yaml version is missing or invalid (use semver x.y.z).",
+          message: vscode.l10n.t("app.yaml version is missing or invalid (use semver x.y.z)."),
         };
       }
       if (!config.files?.length) {
         return {
           ok: false,
-          message: "app.yaml has no files list. Add files to package.",
+          message: vscode.l10n.t("app.yaml has no files list. Add files to package."),
         };
       }
 
@@ -256,7 +256,7 @@ export class ProjectPackageService {
         const rel = config.files[0];
         const absolutePath = path.join(projectDir, rel);
         if (!fs.existsSync(absolutePath)) {
-          return { ok: false, message: `Package file missing: ${rel}` };
+          return { ok: false, message: vscode.l10n.t("Package file missing: {0}", rel) };
         }
         // Single-file projects are stored as main.py in zip root
         zip.file("main.py", await fs.promises.readFile(absolutePath));
@@ -264,7 +264,7 @@ export class ProjectPackageService {
         for (const file of config.files) {
           const localPath = path.join(projectDir, file);
           if (!fs.existsSync(localPath)) {
-            return { ok: false, message: `Package file missing: ${file}` };
+            return { ok: false, message: vscode.l10n.t("Package file missing: {0}", file) };
           }
           const data = await fs.promises.readFile(localPath);
           zip.file(file.replace(/\\/g, "/"), data);
@@ -327,7 +327,7 @@ export class ProjectPackageService {
   > {
     try {
       if (!fs.existsSync(projectDir) || !fs.statSync(projectDir).isDirectory()) {
-        return { ok: false, message: `Not a directory: ${projectDir}` };
+        return { ok: false, message: vscode.l10n.t("Not a directory: {0}", projectDir) };
       }
       const zip = new JSZip();
       await this.addDirToZip(zip, projectDir, "", excludes);
@@ -430,40 +430,40 @@ export class ProjectPackageService {
     const cur = existing.ok ? existing.config : undefined;
 
     const id = await vscode.window.showInputBox({
-      title: "Maix App: id",
-      prompt: "App id (letters, numbers, underscore; must start with letter)",
+      title: vscode.l10n.t("Maix App: id"),
+      prompt: vscode.l10n.t("App id (letters, numbers, underscore; must start with letter)"),
       value: cur?.id || path.basename(projectDir).replace(/[^a-zA-Z0-9_]/g, "_") || "app",
       validateInput: (v) =>
-        isValidAppId(v.trim()) ? undefined : "Invalid id (e.g. my_app)",
+        isValidAppId(v.trim()) ? undefined : vscode.l10n.t("Invalid id (e.g. my_app)"),
     });
     if (id === undefined) {
       return undefined;
     }
 
     const name = await vscode.window.showInputBox({
-      title: "Maix App: name",
-      prompt: "Display name",
+      title: vscode.l10n.t("Maix App: name"),
+      prompt: vscode.l10n.t("Display name"),
       value: cur?.name || path.basename(projectDir),
-      validateInput: (v) => (v.trim() ? undefined : "Name is required"),
+      validateInput: (v) => (v.trim() ? undefined : vscode.l10n.t("Name is required")),
     });
     if (name === undefined) {
       return undefined;
     }
 
     const version = await vscode.window.showInputBox({
-      title: "Maix App: version",
-      prompt: "Semver version (x.y.z)",
+      title: vscode.l10n.t("Maix App: version"),
+      prompt: vscode.l10n.t("Semver version (x.y.z)"),
       value: cur?.version || "1.0.0",
       validateInput: (v) =>
-        isValidAppVersion(v.trim()) ? undefined : "Use x.y.z (e.g. 1.0.0)",
+        isValidAppVersion(v.trim()) ? undefined : vscode.l10n.t("Use x.y.z (e.g. 1.0.0)"),
     });
     if (version === undefined) {
       return undefined;
     }
 
     const author = await vscode.window.showInputBox({
-      title: "Maix App: author",
-      prompt: "Author (optional)",
+      title: vscode.l10n.t("Maix App: author"),
+      prompt: vscode.l10n.t("Author (optional)"),
       value: cur?.author || "",
     });
     if (author === undefined) {
@@ -471,8 +471,8 @@ export class ProjectPackageService {
     }
 
     const desc = await vscode.window.showInputBox({
-      title: "Maix App: description",
-      prompt: "Short description (single line)",
+      title: vscode.l10n.t("Maix App: description"),
+      prompt: vscode.l10n.t("Short description (single line)"),
       value: cur?.desc || "",
     });
     if (desc === undefined) {
@@ -493,9 +493,9 @@ export class ProjectPackageService {
             f === APP_ICON_NAME,
         })),
         {
-          title: "Select files to include in package",
+          title: vscode.l10n.t("Select files to include in package"),
           canPickMany: true,
-          placeHolder: "main.py is required for multi-file apps",
+          placeHolder: vscode.l10n.t("main.py is required for multi-file apps"),
         }
       );
       if (!picks) {
@@ -509,7 +509,7 @@ export class ProjectPackageService {
       const hasMain = files.some((f) => path.basename(f) === "main.py");
       if (!hasMain && files.length !== 1) {
         vscode.window.showErrorMessage(
-          "Package must include main.py (or exactly one Python file)."
+          vscode.l10n.t("Package must include main.py (or exactly one Python file).")
         );
         return undefined;
       }
@@ -527,7 +527,7 @@ export class ProjectPackageService {
 
     const written = await this.writeConfig(projectDir, config);
     if (!written.ok) {
-      vscode.window.showErrorMessage(`Failed to write app.yaml: ${written.message}`);
+      vscode.window.showErrorMessage(vscode.l10n.t("Failed to write app.yaml: {0}", written.message));
       return undefined;
     }
     return config;

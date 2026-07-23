@@ -5,7 +5,7 @@ import { Status } from "../../model/status";
 import { Commands } from "../../constants";
 
 enum DeviceType {
-  localDevice = "Local Device",
+  localDevice = "local",
 }
 
 export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
@@ -83,17 +83,17 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
       let info = device.getDeviceInfo();
       if (info) {
         return [
-          new DeviceInfoItem(`Name: ${device.device?.name}`),
-          new DeviceInfoItem(`IP: ${device.device?.ip}`),
-          new DeviceInfoItem(`SysVer: ${info.sysVer}`),
-          new DeviceInfoItem(`MaixPyVer: ${info.maixpyVer}`),
+          new DeviceInfoItem(vscode.l10n.t("Name: {0}", String(device.device?.name ?? ""))),
+          new DeviceInfoItem(vscode.l10n.t("IP: {0}", String(device.device?.ip ?? ""))),
+          new DeviceInfoItem(vscode.l10n.t("SysVer: {0}", String(info.sysVer ?? ""))),
+          new DeviceInfoItem(vscode.l10n.t("MaixPyVer: {0}", String(info.maixpyVer ?? ""))),
           new DeviceInfoItem(
-            `Device: ${info.device || "Unknown"}`
+            vscode.l10n.t("Device: {0}", info.device || vscode.l10n.t("Unknown"))
           ),
           new DeviceInfoItem(
-            `Runtime: ${info.runtime || "not installed"}`
+            vscode.l10n.t("Runtime: {0}", info.runtime || vscode.l10n.t("not installed"))
           ),
-          new DeviceInfoItem(`ApiKey: ${info.apiKey}`),
+          new DeviceInfoItem(vscode.l10n.t("ApiKey: {0}", String(info.apiKey ?? ""))),
         ];
       }
     }
@@ -108,37 +108,37 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
         const name = device.device?.name || "";
         return [
           new DeviceActionItem(
-            "Run Current File",
+            vscode.l10n.t("Run Current File"),
             Commands.runOnDevice,
             "play",
             "maixcode-deviceRunFile"
           ),
           new DeviceActionItem(
-            "Run Project",
+            vscode.l10n.t("Run Project"),
             Commands.runProject,
             "run-all",
             "maixcode-deviceRunProject"
           ),
           new DeviceActionItem(
-            "Package App",
+            vscode.l10n.t("Package App"),
             Commands.packageApp,
             "package",
             "maixcode-devicePackageApp"
           ),
           new DeviceActionItem(
-            "Install App",
+            vscode.l10n.t("Install App"),
             Commands.installApp,
             "cloud-upload",
             "maixcode-deviceInstallApp"
           ),
           new DeviceActionItem(
-            "Configure Project",
+            vscode.l10n.t("Configure Project"),
             Commands.configureProject,
             "settings-gear",
             "maixcode-deviceConfigureProject"
           ),
           new DeviceActionItem(
-            "Install Runtime",
+            vscode.l10n.t("Install Runtime"),
             Commands.installRuntime,
             "cloud-download",
             "maixcode-deviceInstallRuntime"
@@ -163,7 +163,7 @@ export class DeviceGroupItem extends TreeItem {
 
 export class DeviceTypeItem extends TreeItem {
   constructor(public type: DeviceType) {
-    super(type);
+    super(type === DeviceType.localDevice ? vscode.l10n.t("Local Device") : type);
   }
 
   collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
@@ -181,7 +181,7 @@ export class DeviceIpItem extends TreeItem {
 
 export class DeviceInfoGroupItem extends TreeItem {
   constructor() {
-    super("Current Device Info");
+    super(vscode.l10n.t("Current Device Info"));
   }
 
   collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
@@ -199,7 +199,7 @@ export class DeviceInfoItem extends TreeItem {
 
 export class DeviceManualConnectItem extends TreeItem {
   constructor() {
-    super("Manual Connect");
+    super(vscode.l10n.t("Manual Connect"));
   }
 
   contextValue = "maixcode-deviceManualConnect";
@@ -208,7 +208,7 @@ export class DeviceManualConnectItem extends TreeItem {
 
   command = {
     command: Commands.connectDevice,
-    title: "Connect",
+    title: vscode.l10n.t("Connect"),
   };
 }
 
@@ -232,10 +232,10 @@ export class DeviceActionItem extends TreeItem {
 
 export class DeviceOpenTerminalItem extends TreeItem {
   constructor(public ip: string, public name: string) {
-    super("Open SSH Terminal");
+    super(vscode.l10n.t("Open SSH Terminal"));
     this.command = {
       command: Commands.openDeviceTerminal,
-      title: "Open SSH Terminal",
+      title: vscode.l10n.t("Open SSH Terminal"),
       arguments: [{ ip, name }],
     };
   }
@@ -247,10 +247,10 @@ export class DeviceOpenTerminalItem extends TreeItem {
 
 export class DeviceOpenSftpItem extends TreeItem {
   constructor(public ip: string, public name: string) {
-    super("Open Device Files (SFTP)");
+    super(vscode.l10n.t("Open Device Files (SFTP)"));
     this.command = {
       command: Commands.openDeviceSftp,
-      title: "Open Device Files (SFTP)",
+      title: vscode.l10n.t("Open Device Files (SFTP)"),
       arguments: [{ ip, name }],
     };
   }
@@ -262,7 +262,7 @@ export class DeviceOpenSftpItem extends TreeItem {
 
 export class DeviceDisconnectItem extends TreeItem {
   constructor() {
-    super("Disconnect");
+    super(vscode.l10n.t("Disconnect"));
   }
 
   contextValue = "maixcode-deviceDisconnect";
@@ -271,12 +271,12 @@ export class DeviceDisconnectItem extends TreeItem {
 
   command = {
     command: Commands.disconnectDevice,
-    title: "Disconnect",
+    title: vscode.l10n.t("Disconnect"),
   };
 }
 
 export class DeviceBlankItem extends TreeItem {
   constructor() {
-    super("No device found");
+    super(vscode.l10n.t("No device found"));
   }
 }

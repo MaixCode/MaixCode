@@ -104,19 +104,19 @@ export class ExampleFileProvider
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: "MaixCode Examples",
+        title: vscode.l10n.t("MaixCode Examples"),
         cancellable: false,
       },
       async (progress) => {
         for (const source of this.sources) {
           try {
-            progress.report({ message: `Refreshing ${source.label}...` });
+            progress.report({ message: vscode.l10n.t("Refreshing {0}...", source.label) });
             await source.refresh((msg) => progress.report({ message: msg }));
             info(`[ExampleFileProvider] ${source.id} OK`);
           } catch (e) {
             warn(`[ExampleFileProvider] ${source.id} failed: ${e}`);
             vscode.window.showErrorMessage(
-              `Example source "${source.label}" (${source.id}) failed: ${e}`
+              vscode.l10n.t('Example source "{0}" ({1}) failed: {2}', source.label, source.id, String(e))
             );
           }
         }
@@ -132,28 +132,28 @@ export class ExampleFileProvider
     this.reloadSources();
     const source = this.sources.find((s) => s.id === sourceId);
     if (!source) {
-      vscode.window.showErrorMessage(`Example source not found: ${sourceId}`);
+      vscode.window.showErrorMessage(vscode.l10n.t("Example source not found: {0}", sourceId));
       return;
     }
     info(`[ExampleFileProvider] Refreshing source ${sourceId}...`);
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `MaixCode: ${source.label}`,
+        title: vscode.l10n.t("MaixCode: {0}", source.label),
         cancellable: false,
       },
       async (progress) => {
         try {
-          progress.report({ message: `Refreshing ${source.label}...` });
+          progress.report({ message: vscode.l10n.t("Refreshing {0}...", source.label) });
           await source.refresh((msg) => progress.report({ message: msg }));
           info(`[ExampleFileProvider] ${source.id} OK`);
           vscode.window.showInformationMessage(
-            `Example source "${source.label}" refreshed.`
+            vscode.l10n.t('Example source "{0}" refreshed.', source.label)
           );
         } catch (e) {
           warn(`[ExampleFileProvider] ${source.id} failed: ${e}`);
           vscode.window.showErrorMessage(
-            `Example source "${source.label}" failed: ${e}`
+            vscode.l10n.t('Example source "{0}" failed: {1}', source.label, String(e))
           );
         }
       }
@@ -291,7 +291,7 @@ export class ExampleFileProvider
       // local_folder is the user's own tree; no overwrite warning
       if (!this.isLocalFolderSource(uri.fsPath, sourceId)) {
         void vscode.window.showWarningMessage(
-          "You are opening the cached source file. Refreshing examples may overwrite your changes."
+          vscode.l10n.t("You are opening the cached source file. Refreshing examples may overwrite your changes.")
         );
       }
       await vscode.window.showTextDocument(uri, { preview: false });
@@ -335,7 +335,7 @@ export class ExampleFileProvider
         `[ExampleFileProvider] opened virtual editor ${virtualUri.toString()} lang=${language}`
       );
     } catch (e) {
-      vscode.window.showErrorMessage(`Failed to open example: ${e}`);
+      vscode.window.showErrorMessage(vscode.l10n.t("Failed to open example: {0}", String(e)));
     }
   }
 

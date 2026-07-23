@@ -1,7 +1,7 @@
 {
   "name": "maixcode",
-  "displayName": "MaixCode",
-  "description": "MaixVision on VSCode",
+  "displayName": "%maixcode.displayName%",
+  "description": "%maixcode.description%",
   "version": "0.0.1",
   "publisher": "Cranyozen",
   "engines": {
@@ -28,14 +28,14 @@
       "activitybar": [
         {
           "id": "maixcode-mainview",
-          "title": "MaixCode",
+          "title": "%maixcode.viewsContainers.mainview%",
           "icon": "$(circuit-board)"
         }
       ],
       "secondarySidebar": [
         {
           "id": "maixcode-secondary",
-          "title": "MaixCode",
+          "title": "%maixcode.viewsContainers.secondary%",
           "icon": "$(device-camera)"
         }
       ]
@@ -44,12 +44,12 @@
       "maixcode-mainview": [
         {
           "id": "maixcode-devices",
-          "name": "Device",
+          "name": "%maixcode.views.devices%",
           "icon": "$(vm-outline)"
         },
         {
           "id": "maixcode-example",
-          "name": "Example",
+          "name": "%maixcode.views.example%",
           "icon": "$(folder-library)"
         }
       ],
@@ -57,7 +57,7 @@
         {
           "type": "webview",
           "id": "maixcode-image",
-          "name": "Image",
+          "name": "%maixcode.views.image%",
           "icon": "$(device-camera)",
           "visibility": "visible"
         }
@@ -66,146 +66,146 @@
     "commands": [
       {
         "command": "maixcode.connectDevice",
-        "title": "Connect Device",
+        "title": "%maixcode.command.connectDevice%",
         "icon": "$(vm-connect)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.disconnectDevice",
-        "title": "Disconnect Device",
+        "title": "%maixcode.command.disconnectDevice%",
         "icon": "$(debug-disconnect)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.openDeviceTerminal",
-        "title": "Open SSH Terminal",
+        "title": "%maixcode.command.openDeviceTerminal%",
         "icon": "$(terminal)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.openDeviceSftp",
-        "title": "Open Device Files (SFTP)",
+        "title": "%maixcode.command.openDeviceSftp%",
         "icon": "$(folder-opened)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.discoverDevice",
-        "title": "Discover Devices",
+        "title": "%maixcode.command.discoverDevice%",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.refreshDeviceData",
-        "title": "Refresh Devices",
+        "title": "%maixcode.command.refreshDeviceData%",
         "icon": "$(refresh)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.refreshExample",
-        "title": "Refresh Examples",
+        "title": "%maixcode.command.refreshExample%",
         "icon": "$(refresh)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.refreshExampleSource",
-        "title": "Refresh Example Source",
+        "title": "%maixcode.command.refreshExampleSource%",
         "icon": "$(refresh)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.openExample",
-        "title": "Open Example",
+        "title": "%maixcode.command.openExample%",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.openExampleSource",
-        "title": "Open Source File (may be overwritten)",
+        "title": "%maixcode.command.openExampleSource%",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.openImageViewer",
-        "title": "Open Image Viewer",
+        "title": "%maixcode.command.openImageViewer%",
         "icon": "$(device-camera)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.openImageViewerPanel",
-        "title": "Open Image Viewer in Editor",
+        "title": "%maixcode.command.openImageViewerPanel%",
         "icon": "$(window)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.openImageViewerSidebar",
-        "title": "Open Image Viewer in Sidebar",
+        "title": "%maixcode.command.openImageViewerSidebar%",
         "icon": "$(layout-sidebar-right)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.runOnDevice",
-        "title": "Run Current File on Device",
+        "title": "%maixcode.command.runOnDevice%",
         "icon": "$(play)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.sftpFilterPath",
-        "title": "Filter (Hide in SFTP)",
+        "title": "%maixcode.command.sftpFilterPath%",
         "category": "MaixCode",
         "icon": "$(filter)"
       },
       {
         "command": "maixcode.sftpUnfilterPath",
-        "title": "Unfilter (Show in SFTP)",
+        "title": "%maixcode.command.sftpUnfilterPath%",
         "category": "MaixCode",
         "icon": "$(filter-filled)"
       },
       {
         "command": "maixcode.sftpToggleShowFiltered",
-        "title": "Toggle Show Filtered SFTP Items",
+        "title": "%maixcode.command.sftpToggleShowFiltered%",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.sftpEditFilterPatterns",
-        "title": "Edit SFTP Filter Patterns",
+        "title": "%maixcode.command.sftpEditFilterPatterns%",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.sftpRefresh",
-        "title": "Refresh SFTP",
+        "title": "%maixcode.command.sftpRefresh%",
         "icon": "$(refresh)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.configureProject",
-        "title": "Configure Project (app.yaml)",
+        "title": "%maixcode.command.configureProject%",
         "icon": "$(settings-gear)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.packageApp",
-        "title": "Package App",
+        "title": "%maixcode.command.packageApp%",
         "icon": "$(package)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.installApp",
-        "title": "Install App to Device",
+        "title": "%maixcode.command.installApp%",
         "icon": "$(cloud-upload)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.packageAndInstallApp",
-        "title": "Package and Install App",
+        "title": "%maixcode.command.packageAndInstallApp%",
         "icon": "$(cloud-upload)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.runProject",
-        "title": "Run Project on Device",
+        "title": "%maixcode.command.runProject%",
         "icon": "$(run-all)",
         "category": "MaixCode"
       },
       {
         "command": "maixcode.installRuntime",
-        "title": "Install Runtime on Device",
+        "title": "%maixcode.command.installRuntime%",
         "icon": "$(cloud-download)",
         "category": "MaixCode"
       }
@@ -420,7 +420,7 @@
     "debuggers": [
       {
         "type": "maixpy",
-        "label": "MaixPy Debug",
+        "label": "%maixcode.debugger.label%",
         "languages": [
           "python"
         ],
@@ -432,12 +432,12 @@
             "properties": {
               "program": {
                 "type": "string",
-                "description": "Absolute path to the MaixPy/Python file to run on the device",
+                "description": "%maixcode.debugger.program%",
                 "default": "${file}"
               },
               "noDebug": {
                 "type": "boolean",
-                "description": "Run without debug UI extras",
+                "description": "%maixcode.debugger.noDebug%",
                 "default": true
               },
               "mode": {
@@ -447,15 +447,15 @@
                   "project"
                 ],
                 "default": "file",
-                "description": "file = Run source; project = RunProject zip (projectZip + projectDir)"
+                "description": "%maixcode.debugger.mode%"
               },
               "projectDir": {
                 "type": "string",
-                "description": "Project root for mode=project"
+                "description": "%maixcode.debugger.projectDir%"
               },
               "projectZip": {
                 "type": "string",
-                "description": "Path to project zip for mode=project (built by Run Project command)"
+                "description": "%maixcode.debugger.projectZip%"
               }
             }
           }
@@ -464,13 +464,13 @@
           {
             "type": "maixpy",
             "request": "launch",
-            "name": "MaixPy: Run Current File on Device",
+            "name": "%maixcode.debugger.launch.file%",
             "program": "${file}"
           },
           {
             "type": "maixpy",
             "request": "launch",
-            "name": "MaixPy: Run Project on Device",
+            "name": "%maixcode.debugger.launch.project%",
             "program": "${workspaceFolder}",
             "mode": "project",
             "projectDir": "${workspaceFolder}"
@@ -478,22 +478,22 @@
         ],
         "configurationSnippets": [
           {
-            "label": "MaixPy: Run Current File on Device",
-            "description": "Send the current Python file to a connected MaixCAM",
+            "label": "%maixcode.debugger.snippet.file.label%",
+            "description": "%maixcode.debugger.snippet.file.description%",
             "body": {
               "type": "maixpy",
               "request": "launch",
-              "name": "MaixPy: Run Current File on Device",
+              "name": "%maixcode.debugger.launch.file%",
               "program": "${file}"
             }
           },
           {
-            "label": "MaixPy: Run Project on Device",
-            "description": "Package workspace project and run via RunProject on MaixCAM",
+            "label": "%maixcode.debugger.snippet.project.label%",
+            "description": "%maixcode.debugger.snippet.project.description%",
             "body": {
               "type": "maixpy",
               "request": "launch",
-              "name": "MaixPy: Run Project on Device",
+              "name": "%maixcode.debugger.launch.project%",
               "program": "${workspaceFolder}",
               "mode": "project",
               "projectDir": "${workspaceFolder}"
@@ -503,29 +503,29 @@
       }
     ],
     "configuration": {
-      "title": "MaixCode",
+      "title": "%maixcode.config.title%",
       "properties": {
         "maixcode.enableDeviceDiscovery": {
           "type": "boolean",
           "default": true,
-          "description": "Enable device discovery"
+          "description": "%maixcode.config.enableDeviceDiscovery%"
         },
         "maixcode.autoConnect": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically connect when a MaixCAM is discovered and no device is connected"
+          "description": "%maixcode.config.autoConnect%"
         },
         "maixcode.autoConnectTarget": {
           "type": "string",
           "default": "",
-          "description": "Preferred device for auto-connect: device hostname (e.g. maixcam-xxxx.local) or IP. Empty = last connected device, then first discovered."
+          "description": "%maixcode.config.autoConnectTarget%"
         },
         "maixcode.imageServicePort": {
           "type": "number",
           "default": 9090,
           "minimum": 0,
           "maximum": 65535,
-          "description": "Local image service port (HTTP / WebSocket / MJPEG). 0 = ephemeral. If bind fails, falls back to ephemeral."
+          "description": "%maixcode.config.imageServicePort%"
         },
         "maixcode.imageViewerDefaultMode": {
           "type": "string",
@@ -536,23 +536,23 @@
             "mjpeg"
           ],
           "enumDescriptions": [
-            "Poll GET /image/:key",
-            "WebSocket subscribe push",
-            "MJPEG multipart stream"
+            "%maixcode.config.imageViewerDefaultMode.http%",
+            "%maixcode.config.imageViewerDefaultMode.websocket%",
+            "%maixcode.config.imageViewerDefaultMode.mjpeg%"
           ],
-          "description": "Default transport in the Image Preview panel"
+          "description": "%maixcode.config.imageViewerDefaultMode%"
         },
         "maixcode.imageHttpIntervalMs": {
           "type": "number",
           "default": 33,
           "minimum": 16,
           "maximum": 2000,
-          "description": "Default HTTP poll interval (ms) in Image Preview (~30fps at 33)"
+          "description": "%maixcode.config.imageHttpIntervalMs%"
         },
         "maixcode.imageViewerAutoStart": {
           "type": "boolean",
           "default": true,
-          "description": "Auto-start stream when Image Preview opens with a connected device"
+          "description": "%maixcode.config.imageViewerAutoStart%"
         },
         "maixcode.exampleSources": {
           "type": "array",
@@ -563,7 +563,7 @@
               "label": "Official"
             }
           ],
-          "description": "Example sources as first-level folders. Types: sipeed | local_folder | github_repo.",
+          "description": "%maixcode.config.exampleSources%",
           "items": {
             "type": "object",
             "required": [
@@ -573,7 +573,7 @@
             "properties": {
               "id": {
                 "type": "string",
-                "description": "Unique id; used as cache folder name under sources/<id>/"
+                "description": "%maixcode.config.exampleSources.id%"
               },
               "type": {
                 "type": "string",
@@ -585,35 +585,35 @@
               },
               "label": {
                 "type": "string",
-                "description": "Display name in the Example tree"
+                "description": "%maixcode.config.exampleSources.label%"
               },
               "baseUrl": {
                 "type": "string",
-                "description": "sipeed CDN base URL"
+                "description": "%maixcode.config.exampleSources.baseUrl%"
               },
               "path": {
                 "type": "string",
-                "description": "local_folder: absolute path, ~/..., or ${workspaceFolder}/..."
+                "description": "%maixcode.config.exampleSources.path%"
               },
               "owner": {
                 "type": "string",
-                "description": "github_repo: owner"
+                "description": "%maixcode.config.exampleSources.owner%"
               },
               "repo": {
                 "type": "string",
-                "description": "github_repo: repository name"
+                "description": "%maixcode.config.exampleSources.repo%"
               },
               "ref": {
                 "type": "string",
-                "description": "github_repo: branch, tag, or commit (default main)"
+                "description": "%maixcode.config.exampleSources.ref%"
               },
               "subdir": {
                 "type": "string",
-                "description": "github_repo: optional subdirectory inside the repo"
+                "description": "%maixcode.config.exampleSources.subdir%"
               },
               "token": {
                 "type": "string",
-                "description": "github_repo: optional token (prefer maixcode.githubToken)"
+                "description": "%maixcode.config.exampleSources.token%"
               }
             }
           }
@@ -621,17 +621,17 @@
         "maixcode.githubToken": {
           "type": "string",
           "default": "",
-          "description": "Optional GitHub token for private example repos (maixcode.exampleSources type github_repo)."
+          "description": "%maixcode.config.githubToken%"
         },
         "maixcode.sshPort": {
           "type": "number",
           "default": 22,
-          "description": "Default SSH port for device terminals"
+          "description": "%maixcode.config.sshPort%"
         },
         "maixcode.sshConnectTimeoutMs": {
           "type": "number",
           "default": 10000,
-          "description": "SSH connect timeout (ms) per credential attempt"
+          "description": "%maixcode.config.sshConnectTimeoutMs%"
         },
         "maixcode.sshCredentials": {
           "type": "array",
@@ -641,7 +641,7 @@
               "password": "root"
             }
           ],
-          "description": "SSH credentials tried in order until one succeeds (username/password). Passwords are stored in settings in plain text.",
+          "description": "%maixcode.config.sshCredentials%",
           "items": {
             "type": "object",
             "required": [
@@ -650,16 +650,16 @@
             "properties": {
               "username": {
                 "type": "string",
-                "description": "SSH username"
+                "description": "%maixcode.config.sshCredentials.username%"
               },
               "password": {
                 "type": "string",
                 "default": "",
-                "description": "SSH password"
+                "description": "%maixcode.config.sshCredentials.password%"
               },
               "label": {
                 "type": "string",
-                "description": "Optional label for logs only"
+                "description": "%maixcode.config.sshCredentials.label%"
               }
             }
           }
@@ -667,12 +667,12 @@
         "maixcode.sftpRoot": {
           "type": "string",
           "default": "/",
-          "description": "Legacy single mount root. Prefer maixcode.sftpBookmarks for first-level folders. Used only if sftpBookmarks is empty."
+          "description": "%maixcode.config.sftpRoot%"
         },
         "maixcode.sftpReadOnly": {
           "type": "boolean",
           "default": false,
-          "description": "When true, SFTP virtual filesystem is read-only."
+          "description": "%maixcode.config.sftpReadOnly%"
         },
         "maixcode.sftpHidePatterns": {
           "type": "array",
@@ -689,7 +689,7 @@
             "/var/log/**",
             "/^core\\.\\d+$/"
           ],
-          "description": "Hide matching names/paths from SFTP Explorer. Glob (* ? **) or /regex/flags. Right-click a folder/file \u2192 Filter (Hide in SFTP) adds its full path. Use Toggle Show Filtered SFTP Items to reveal badges on filtered entries.",
+          "description": "%maixcode.config.sftpHidePatterns%",
           "items": {
             "type": "string"
           }
@@ -697,12 +697,12 @@
         "maixcode.sftpShowFiltered": {
           "type": "boolean",
           "default": false,
-          "description": "When true, SFTP entries matching hide patterns still appear in Explorer with an \"H\" badge and tooltip (so you can Unfilter). When false, they are fully hidden."
+          "description": "%maixcode.config.sftpShowFiltered%"
         },
         "maixcode.autoOpenSftp": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically open device SFTP (maixsftp workspace folder) when a device connects. Uses maixcode.sshCredentials and maixcode.sftpBookmarks. Quiet mode (no toast / no Explorer focus)."
+          "description": "%maixcode.config.autoOpenSftp%"
         },
         "maixcode.sftpBookmarks": {
           "type": "array",
@@ -718,7 +718,7 @@
               "order": 1
             }
           ],
-          "description": "SFTP first-level folders (bookmarks). Each entry: name (label), remotePath (device path), order (sort). Default: Root (/) and Home (/root).",
+          "description": "%maixcode.config.sftpBookmarks%",
           "items": {
             "type": "object",
             "required": [
@@ -728,20 +728,20 @@
             "properties": {
               "name": {
                 "type": "string",
-                "description": "Display name under MaixSFTP root"
+                "description": "%maixcode.config.sftpBookmarks.name%"
               },
               "remotePath": {
                 "type": "string",
-                "description": "Absolute remote path (also accepts remote_path)"
+                "description": "%maixcode.config.sftpBookmarks.remotePath%"
               },
               "remote_path": {
                 "type": "string",
-                "description": "Alias for remotePath"
+                "description": "%maixcode.config.sftpBookmarks.remote_path%"
               },
               "order": {
                 "type": "number",
                 "default": 0,
-                "description": "Sort order (ascending)"
+                "description": "%maixcode.config.sftpBookmarks.order%"
               }
             }
           }
@@ -796,5 +796,6 @@
     "ssh2": "^1.17.0",
     "ws": "^8.18.0",
     "yamljs": "^0.3.0"
-  }
+  },
+  "l10n": "./l10n"
 }

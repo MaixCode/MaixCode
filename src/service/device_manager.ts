@@ -74,8 +74,8 @@ export class DeviceManager {
         selectItems.push(new DeviceQuickPickItem(_device));
       }
       const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem>();
-      quickPick.title = "Connect to Device";
-      quickPick.placeholder = "Input IP address";
+      quickPick.title = vscode.l10n.t("Connect to Device");
+      quickPick.placeholder = vscode.l10n.t("Input IP address");
       quickPick.items = selectItems;
       quickPick.canSelectMany = false;
       
@@ -87,7 +87,7 @@ export class DeviceManager {
               ...selectItems,
               {
                 label: value.trim(),
-                description: "Custom IP address",
+                description: vscode.l10n.t("Custom IP address"),
                 iconPath: new vscode.ThemeIcon("globe")
               }
             ];
@@ -98,8 +98,8 @@ export class DeviceManager {
               {
                 alwaysShow: true,
                 picked: false,
-                label: "Invalid IP format",
-                description: "Please enter a valid IP address",
+                label: vscode.l10n.t("Invalid IP format"),
+                description: vscode.l10n.t("Please enter a valid IP address"),
                 iconPath: new vscode.ThemeIcon("warning")
               }
             ];
@@ -111,7 +111,7 @@ export class DeviceManager {
       
       quickPick.onDidChangeSelection((selection) => {
         if (selection[0]) {
-          if (selection[0].label === "Invalid IP format") {
+          if (selection[0].label === vscode.l10n.t("Invalid IP format")) {
             return; // 不允许选择无效的 IP 格式项
           }
           quickPick.hide();
@@ -125,7 +125,7 @@ export class DeviceManager {
               ip = customIp;
               this.connectDeviceCommand(ip);
             } else {
-              vscode.window.showErrorMessage("Invalid IP address: " + customIp);
+              vscode.window.showErrorMessage(vscode.l10n.t("Invalid IP address: {0}", customIp));
             }
           }
         }
@@ -138,7 +138,7 @@ export class DeviceManager {
             ip = value;
             this.connectDeviceCommand(ip);
           } else {
-            vscode.window.showErrorMessage("Invalid IP address format: " + value);
+            vscode.window.showErrorMessage(vscode.l10n.t("Invalid IP address format: {0}", value));
           }
         }
       });
@@ -152,7 +152,7 @@ export class DeviceManager {
       if (IPREGEX.test(args)) {
         ip = args;
       } else {
-        vscode.window.showErrorMessage("Invalid IP address: " + args);
+        vscode.window.showErrorMessage(vscode.l10n.t("Invalid IP address: {0}", args));
         return;
       }
     } else if (args instanceof DeviceIpItem) {
@@ -166,7 +166,7 @@ export class DeviceManager {
       if (this.isConnected(deviceAddr)) {
         info(`Device ${deviceAddr.name} is already connected.`);
         vscode.window.showInformationMessage(
-          `Device ${deviceAddr.name} is already connected.`
+          vscode.l10n.t("Device {0} is already connected.", deviceAddr.name)
         );
         return;
       }
@@ -184,7 +184,7 @@ export class DeviceManager {
       // 若只指定 ip
       if (!IPREGEX.test(ip)) {
         error(`Invalid IP address: ${ip}`);
-        vscode.window.showErrorMessage("Invalid IP address: " + ip);
+        vscode.window.showErrorMessage(vscode.l10n.t("Invalid IP address: {0}", ip));
         return;
       }
       let deviceList = this.getDiscoveredDevices();
@@ -200,7 +200,7 @@ export class DeviceManager {
       if (this.isConnected(deviceAddr)) {
         info(`Device ${deviceAddr.name} is already connected.`);
         vscode.window.showInformationMessage(
-          `Device ${deviceAddr.name} is already connected.`
+          vscode.l10n.t("Device {0} is already connected.", deviceAddr.name)
         );
         return;
       }
@@ -209,14 +209,14 @@ export class DeviceManager {
       // 未找到设备，创建新的 DeviceAddr
       if (!ip || !IPREGEX.test(ip)) {
         error(`Invalid IP address: ${ip}`);
-        vscode.window.showErrorMessage("Invalid IP address: " + ip);
+        vscode.window.showErrorMessage(vscode.l10n.t("Invalid IP address: {0}", ip));
         return;
       }
       deviceAddr = new DeviceAddr(defaultDeviceName, ip);
       if (this.isConnected(deviceAddr)) {
         info(`Device ${deviceAddr.name} is already connected.`);
         vscode.window.showInformationMessage(
-          `Device ${deviceAddr.name} is already connected.`
+          vscode.l10n.t("Device {0} is already connected.", deviceAddr.name)
         );
         return;
       }
@@ -234,9 +234,9 @@ export class DeviceManager {
       );
       this.currentDevice = undefined;
       this.notifyConnectionListChanged();
-      vscode.window.showInformationMessage("Disconnected from device.");
+      vscode.window.showInformationMessage(vscode.l10n.t("Disconnected from device."));
     } else {
-      vscode.window.showErrorMessage("No device is currently connected.");
+      vscode.window.showErrorMessage(vscode.l10n.t("No device is currently connected."));
     }
   }
 

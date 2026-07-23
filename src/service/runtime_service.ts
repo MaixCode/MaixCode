@@ -39,7 +39,7 @@ export class RuntimeService {
     const connected = this.deps.getConnectedDevices();
     if (connected.length === 0) {
       vscode.window.showErrorMessage(
-        "No device connected. Connect a MaixCAM from the MaixCode sidebar first."
+        vscode.l10n.t("No device connected. Connect a MaixCAM from the MaixCode sidebar first.")
       );
       return undefined;
     }
@@ -185,20 +185,20 @@ export class RuntimeService {
   public async installOrUpdateRuntime(): Promise<void> {
     if (this.updating) {
       vscode.window.showWarningMessage(
-        "A runtime install is already in progress."
+        vscode.l10n.t("A runtime install is already in progress.")
       );
       return;
     }
 
     const device = this.pickDevice();
     if (!device?.wss?.isConnected) {
-      vscode.window.showErrorMessage("Device is not connected.");
+      vscode.window.showErrorMessage(vscode.l10n.t("Device is not connected."));
       return;
     }
     const wss = device.wss;
     if (typeof wss.updateRuntime !== "function") {
       vscode.window.showErrorMessage(
-        "Transport does not support updateRuntime."
+        vscode.l10n.t("Transport does not support updateRuntime.")
       );
       return;
     }
@@ -206,7 +206,7 @@ export class RuntimeService {
     const info = device.getDeviceInfo();
     if (!info?.apiKey) {
       vscode.window.showErrorMessage(
-        "Device has no apiKey. Wait for device info after connect, then retry."
+        vscode.l10n.t("Device has no apiKey. Wait for device info after connect, then retry.")
       );
       return;
     }
@@ -224,7 +224,7 @@ export class RuntimeService {
       const versionInfo = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: "Checking runtime version…",
+          title: vscode.l10n.t("Checking runtime version…"),
           cancellable: false,
         },
         async () => this.fetchLatestVersion(info)
@@ -232,28 +232,34 @@ export class RuntimeService {
 
       if (!versionInfo) {
         vscode.window.showErrorMessage(
-          "Could not query latest runtime version from Sipeed API."
+          vscode.l10n.t("Could not query latest runtime version from Sipeed API.")
         );
         return;
       }
 
       if (!versionInfo.needUpdate) {
+        const reinstall = vscode.l10n.t("Reinstall");
         const stay = await vscode.window.showInformationMessage(
-          `Runtime is up to date (${versionInfo.current || versionInfo.latest}). Reinstall ${versionInfo.latest}?`,
-          "Reinstall",
-          "Cancel"
+          vscode.l10n.t(
+            "Runtime is up to date ({0}). Reinstall {1}?",
+            versionInfo.current || versionInfo.latest,
+            versionInfo.latest
+          ),
+          reinstall,
+          vscode.l10n.t("Cancel")
         );
-        if (stay !== "Reinstall") {
+        if (stay !== reinstall) {
           return;
         }
       } else {
-        const currentLabel = versionInfo.current || "not installed";
+        const currentLabel = versionInfo.current || vscode.l10n.t("not installed");
+        const install = vscode.l10n.t("Install");
         const go = await vscode.window.showInformationMessage(
-          `Install Runtime ${versionInfo.latest}? (current: ${currentLabel})`,
-          "Install",
-          "Cancel"
+          vscode.l10n.t("Install Runtime {0}? (current: {1})", versionInfo.latest, currentLabel),
+          install,
+          vscode.l10n.t("Cancel")
         );
-        if (go !== "Install") {
+        if (go !== install) {
           return;
         }
       }
@@ -262,7 +268,7 @@ export class RuntimeService {
       const firmware = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `Downloading Runtime ${versionInfo.latest}…`,
+          title: vscode.l10n.t("Downloading Runtime {0}…", versionInfo.latest),
           cancellable: false,
         },
         async () =>
@@ -277,7 +283,7 @@ export class RuntimeService {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `Installing Runtime ${versionInfo.latest}…`,
+          title: vscode.l10n.t("Installing Runtime {0}…", versionInfo.latest),
           cancellable: false,
         },
         async (progress) => {
@@ -289,7 +295,7 @@ export class RuntimeService {
       );
 
       vscode.window.showInformationMessage(
-        `Runtime ${versionInfo.latest} installed on device.`
+        vscode.l10n.t("Runtime {0} installed on device.", versionInfo.latest)
       );
       log(`[Runtime] install complete v${versionInfo.latest}`);
     } catch (e) {

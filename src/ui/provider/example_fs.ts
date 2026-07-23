@@ -463,24 +463,24 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     }
 
     const filters: { [name: string]: string[] } = {
-      Python: ["py"],
-      "All files": ["*"],
+      [vscode.l10n.t("Python")]: ["py"],
+      [vscode.l10n.t("All files")]: ["*"],
     };
     const ext = path.extname(defaultName).replace(/^\./, "");
     if (ext && ext !== "py") {
-      filters["Source"] = [ext];
+      filters[vscode.l10n.t("Source")] = [ext];
     }
 
     const target = await vscode.window.showSaveDialog({
-      title: "Save Example As",
-      saveLabel: "Save As",
+      title: vscode.l10n.t("Save Example As"),
+      saveLabel: vscode.l10n.t("Save As"),
       defaultUri,
       filters,
     });
 
     if (!target) {
       vscode.window.showInformationMessage(
-        "Example kept in the virtual editor only. Use Save again to choose a file path."
+        vscode.l10n.t("Example kept in the virtual editor only. Use Save again to choose a file path.")
       );
       log("[ExampleFS] Save As cancelled");
       return;
@@ -489,9 +489,9 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
     try {
       await vscode.workspace.fs.writeFile(target, content);
       log(`[ExampleFS] saved as ${target.fsPath}`);
-      const open = "Open Saved File";
+      const open = vscode.l10n.t("Open Saved File");
       const choice = await vscode.window.showInformationMessage(
-        `Saved example as ${target.fsPath}`,
+        vscode.l10n.t("Saved example as {0}", target.fsPath),
         open
       );
       if (choice === open) {
@@ -500,7 +500,7 @@ export class ExampleFileSystemProvider implements vscode.FileSystemProvider {
       }
     } catch (e) {
       warn(`[ExampleFS] Save As failed: ${e}`);
-      vscode.window.showErrorMessage(`Failed to save example: ${e}`);
+      vscode.window.showErrorMessage(vscode.l10n.t("Failed to save example: {0}", String(e)));
     }
   }
 

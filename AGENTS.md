@@ -37,6 +37,8 @@ There is no monorepo of packages; workspace file only configures pnpm build allo
 | `src/ui/provider/example.ts` | Example tree + open virtual/source file |
 | `src/ui/provider/example_fs.ts` | virtual FS (`example://`) + disk rehydrate |
 | `src/debugger/` | inline Debug Adapter (not a separate Python process) |
+| `package.nls.json` / `package.nls.zh-cn.json` | Static contributes i18n (`%key%` in `package.json`) |
+| `l10n/bundle.l10n*.json` | Runtime `vscode.l10n.t` bundles (`l10n` field in package.json) |
 | `dist/` | webpack output; `package.json` `main` |
 | `out/` | tsc test output only (gitignored) |
 
@@ -170,6 +172,18 @@ Rules:
 - Body (optional): 1–3 lines on *why* / user impact; wrap ~72; blank line after subject.
 - One logical change per commit when the user splits work; do not mix unrelated fixes in one draft message.
 - Never put secrets, tokens, or absolute personal paths in the message.
+
+
+## i18n (en / zh-cn)
+
+- **Static UI** (`package.json` contributes): use `%maixcode....%` keys resolved by `package.nls.json` (English default) and `package.nls.zh-cn.json`.
+- **Runtime UI** (toasts, QuickPick, status bar, tree labels, progress): `vscode.l10n.t("English source", ...args)` with placeholders `{0}`, `{1}`, … Message text is the key; translations live in `l10n/bundle.l10n.zh-cn.json` (and optional `bundle.l10n.json` for default).
+- **package.json** must set `"l10n": "./l10n"`. Do not webpack the l10n folder away; ship it in the VSIX (root `l10n/` is not in `.vscodeignore`).
+- **Display language**: follows VS Code (`Configure Display Language`). Chinese UI when `zh-cn`.
+- When adding commands/settings/views: add keys to **both** `package.nls.json` and `package.nls.zh-cn.json`, and wire `%keys%` in `package.json`.
+- When adding user-visible runtime strings: wrap with `vscode.l10n.t` and add the same English key + Chinese value to `l10n/bundle.l10n.zh-cn.json` (and `bundle.l10n.json` if maintained).
+- Button labels used for `===` comparisons must use the **localized** string for both the button argument and the comparison (capture in a const).
+- Image viewer webview: inject localized labels from the extension host (escape for HTML); client `media/image_viewer` may keep short English HUD tokens (HTTP/WS/MJPEG).
 
 ## Conventions / gotchas
 

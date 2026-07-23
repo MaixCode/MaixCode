@@ -49,7 +49,7 @@ export function initCommands(context: vscode.ExtensionContext) {
       func: (item?: { sourceId?: string }) => {
         const id = item?.sourceId;
         if (!id) {
-          vscode.window.showErrorMessage("No example source selected");
+          vscode.window.showErrorMessage(vscode.l10n.t("No example source selected"));
           return;
         }
         void Instance.instance.exampleFileProvider.refreshSource(id);
@@ -61,7 +61,7 @@ export function initCommands(context: vscode.ExtensionContext) {
         if (arg instanceof vscode.Uri) {
           Instance.instance.exampleFileProvider.openFile(arg);
         } else {
-          vscode.window.showErrorMessage("Invalid file URI");
+          vscode.window.showErrorMessage(vscode.l10n.t("Invalid file URI"));
           // TODO: Select file by user
         }
       },
@@ -77,7 +77,7 @@ export function initCommands(context: vscode.ExtensionContext) {
           item?.resourceUri ??
           (item?.fsPath ? vscode.Uri.file(item.fsPath) : undefined);
         if (!uri) {
-          vscode.window.showErrorMessage("No example file selected");
+          vscode.window.showErrorMessage(vscode.l10n.t("No example file selected"));
           return;
         }
         void Instance.instance.exampleFileProvider.openFile(
@@ -129,7 +129,7 @@ export function initCommands(context: vscode.ExtensionContext) {
         }
         if (!host) {
           vscode.window.showErrorMessage(
-            "No device IP. Select a device or connect first."
+            vscode.l10n.t("No device IP. Select a device or connect first.")
           );
           return;
         }
@@ -167,7 +167,7 @@ export function initCommands(context: vscode.ExtensionContext) {
         }
         if (!host) {
           vscode.window.showErrorMessage(
-            "No device IP. Select a device or connect first."
+            vscode.l10n.t("No device IP. Select a device or connect first.")
           );
           return;
         }
@@ -296,7 +296,7 @@ export function initCommands(context: vscode.ExtensionContext) {
         log("[Command] runOnDevice");
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
-          vscode.window.showErrorMessage("No active editor");
+          vscode.window.showErrorMessage(vscode.l10n.t("No active editor"));
           log("[Command] runOnDevice: no active editor");
           return;
         }
@@ -322,7 +322,7 @@ export function initCommands(context: vscode.ExtensionContext) {
         log(`[Command] runOnDevice program=${program} connected=${connected.length}`);
         if (connected.length === 0) {
           vscode.window.showErrorMessage(
-            "No device connected. Connect a MaixCAM from the MaixCode sidebar first."
+            vscode.l10n.t("No device connected. Connect a MaixCAM from the MaixCode sidebar first.")
           );
           return;
         }
@@ -330,7 +330,7 @@ export function initCommands(context: vscode.ExtensionContext) {
           const started = await vscode.debug.startDebugging(undefined, {
             type: DebugTypeName,
             request: "launch",
-            name: "MaixPy: Run Current File on Device",
+            name: vscode.l10n.t("MaixPy: Run Current File on Device"),
             program,
           });
           log(`[Command] runOnDevice startDebugging returned ${started}`);

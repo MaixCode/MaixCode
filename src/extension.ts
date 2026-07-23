@@ -14,7 +14,7 @@ function fileLaunchConfig(
   return {
     type: DebugTypeName,
     request: "launch",
-    name: "MaixPy: Run Current File on Device",
+    name: vscode.l10n.t("MaixPy: Run Current File on Device"),
     program: program || "${file}",
     mode: "file",
     noDebug: true,
@@ -28,7 +28,7 @@ function projectLaunchConfig(
   return {
     type: DebugTypeName,
     request: "launch",
-    name: "MaixPy: Run Project on Device",
+    name: vscode.l10n.t("MaixPy: Run Project on Device"),
     program: dir,
     mode: "project",
     projectDir: dir,
@@ -61,19 +61,19 @@ async function pickRunMode(): Promise<"file" | "project" | undefined> {
   const pick = await vscode.window.showQuickPick(
     [
       {
-        label: "$(play) Run Current File",
-        description: "Send active Python file to device (Run)",
+        label: vscode.l10n.t("$(play) Run Current File"),
+        description: vscode.l10n.t("Send active Python file to device (Run)"),
         mode: "file" as const,
       },
       {
-        label: "$(run-all) Run Project",
-        description: "Zip workspace folder and RunProject on device",
+        label: vscode.l10n.t("$(run-all) Run Project"),
+        description: vscode.l10n.t("Zip workspace folder and RunProject on device"),
         mode: "project" as const,
       },
     ],
     {
-      title: "MaixPy Debug",
-      placeHolder: "Choose how to run on MaixCAM",
+      title: vscode.l10n.t("MaixPy Debug"),
+      placeHolder: vscode.l10n.t("Choose how to run on MaixCAM"),
     }
   );
   return pick?.mode;
@@ -139,14 +139,14 @@ const maixpyDebugConfigurationProvider: vscode.DebugConfigurationProvider = {
       }
       if (!projectDir || !fs.existsSync(projectDir)) {
         vscode.window.showErrorMessage(
-          "MaixPy Run Project: open a workspace folder (or a file under the project) first."
+          vscode.l10n.t("MaixPy Run Project: open a workspace folder (or a file under the project) first.")
         );
         return undefined;
       }
       config.projectDir = projectDir;
       config.program = projectDir;
       if (!config.name) {
-        config.name = "MaixPy: Run Project on Device";
+        config.name = vscode.l10n.t("MaixPy: Run Project on Device");
       }
       log(
         `[DebugConfigurationProvider] project mode projectDir=${projectDir}`
@@ -156,7 +156,7 @@ const maixpyDebugConfigurationProvider: vscode.DebugConfigurationProvider = {
 
     // file mode
     if (!config.name) {
-      config.name = "MaixPy: Run Current File on Device";
+      config.name = vscode.l10n.t("MaixPy: Run Current File on Device");
     }
     try {
       const resolved = resolveSourceForRun(
@@ -169,7 +169,7 @@ const maixpyDebugConfigurationProvider: vscode.DebugConfigurationProvider = {
     } catch (e) {
       log(`[DebugConfigurationProvider] resolve failed: ${e}`);
       vscode.window.showErrorMessage(
-        "MaixPy Run File: open a Python file (or untitled buffer) first."
+        vscode.l10n.t("MaixPy Run File: open a Python file (or untitled buffer) first.")
       );
       return undefined;
     }
