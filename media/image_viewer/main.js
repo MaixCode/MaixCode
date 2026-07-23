@@ -3,14 +3,17 @@
 
   const deviceSelect = document.getElementById('deviceSelect');
   const connectionStatus = document.getElementById('connectionStatus');
+  const stage = document.getElementById('stage');
   const streamImage = document.getElementById('streamImage');
   const imageOverlay = document.getElementById('imageOverlay');
   const overlayInfo = document.getElementById('overlayInfo');
+  const zoomBadge = document.getElementById('zoomBadge');
   const logContainer = document.getElementById('logContainer');
-  const fpsValue = document.getElementById('fpsValue');
-  const frameSizeValue = document.getElementById('frameSizeValue');
-  const resolutionValue = document.getElementById('resolutionValue');
-  const latencyValue = document.getElementById('latencyValue');
+  // stream metrics for HUD overlay
+  let metricFps = '0';
+  let metricKb = '0';
+  let metricRes = '-';
+  let metricLatency = '-';
   const startBtn = document.getElementById('startBtn');
   const stopBtn = document.getElementById('stopBtn');
   const screenshotBtn = document.getElementById('screenshotBtn');
@@ -19,6 +22,7 @@
   const histogramToggle = document.getElementById('histogramToggle');
   const histSpace = document.getElementById('histSpace');
   const histPanel = document.getElementById('histPanel');
+  const histResize = document.getElementById('histResize');
   const histCharts = document.getElementById('histCharts');
   const histMeta = document.getElementById('histMeta');
   const histTooltip = document.getElementById('histTooltip');
@@ -46,6 +50,18 @@
   let pendingMeta = null;
   let pendingSize = null;
   let painting = false;
+  // view transform: scale + translate (css px, relative to stage center)
+  let viewScale = 1;
+  let viewX = 0;
+  let viewY = 0;
+  let panActive = false;
+  let panPointerId = null;
+  let panLastX = 0;
+  let panLastY = 0;
+  let panMoved = false;
+  let zoomBadgeTimer = null;
+  const VIEW_MIN = 0.1;
+  const VIEW_MAX = 20;
   let histThrottle = 0;
   let histBusy = false;
   let histPending = false;
@@ -57,7 +73,13 @@
   const HIST_BINS = 256;
   const HIST_MAX_EDGE = 160;
   const HIST_MIN_MS = 120;
-  const HIST_CSS_H = 72;
+  let HIST_CSS_H = 80;
+  const HIST_DOCK_DEFAULT_H = 500;
+  const HIST_DOCK_MIN_H = 140;
+  let histDockHeight = HIST_DOCK_DEFAULT_H;
+  let histResizeActive = false;
+  let histResizeStartY = 0;
+  let histResizeStartH = 0;
   const HIST_SPACES = {
     rgb: {
       name: 'RGB',
@@ -140,7 +162,218 @@
     connectionStatus.className = 'status ' + (type || 'idle');
   }
 
-  function setHistUiEnabled(on) {
+  /** Keep at least minKeep px of the image inside the stage (never fully out of view). */
+  function clampViewTranslation() {
+    if (!stage || !streamImage) {
+      return;
+    }
+    const stageW = stage.clientWidth;
+    const stageH = stage.clientHeight;
+    const imgW0 = streamImage.offsetWidth;
+    const imgH0 = streamImage.offsetHeight;
+    if (stageW <= 0 || stageH <= 0 || imgW0 <= 0 || imgH0 <= 0) {
+      return;
+    }
+    const scaledW = imgW0 * viewScale;
+    const scaledH = imgH0 * viewScale;
+    // keep a visible strip so the image cannot leave completely
+    const minKeep = Math.max(
+      24,
+      Math.min(48, Math.min(scaledW, scaledH, stageW, stageH) * 0.2)
+    );
+    // center-origin coords: image AABB = [viewX ± scaledW/2, viewY ± scaledH/2]
+    // stage AABB = [±stageW/2, ±stageH/2]
+    // require overlap of at least minKeep on each axis when possible
+    let maxX = (stageW + scaledW) / 2 - minKeep;
+    let maxY = (stageH + scaledH) / 2 - minKeep;
+    if (maxX < 0) {
+      maxX = 0;
+    }
+    if (maxY < 0) {
+      maxY = 0;
+    }
+    if (viewX > maxX) {
+      viewX = maxX;
+    } else if (viewX < -maxX) {
+      viewX = -maxX;
+    }
+    if (viewY > maxY) {
+      viewY = maxY;
+    } else if (viewY < -maxY) {
+      viewY = -maxY;
+    }
+  }
+
+  function applyViewTransform() {
+    if (!streamImage) {
+      return;
+    }
+    clampViewTranslation();
+    streamImage.style.transform =
+      'translate(' + viewX + 'px, ' + viewY + 'px) scale(' + viewScale + ')';
+    if (zoomBadge) {
+      if (Math.abs(viewScale - 1) < 0.001 && Math.abs(viewX) < 0.5 && Math.abs(viewY) < 0.5) {
+        zoomBadge.hidden = true;
+      } else {
+        zoomBadge.hidden = false;
+        zoomBadge.textContent = Math.round(viewScale * 100) + '%';
+      }
+    }
+    if (typeof overlayToggle !== 'undefined' && overlayToggle && overlayToggle.checked) {
+      updateOverlay();
+    }
+  }
+
+  function resetView(silent) {
+    viewScale = 1;
+    viewX = 0;
+    viewY = 0;
+    applyViewTransform();
+    if (!silent) {
+      /* no log spam */
+    }
+  }
+
+  function clampViewScale(s) {
+    return Math.max(VIEW_MIN, Math.min(VIEW_MAX, s));
+  }
+
+  /** Zoom around a point in stage client coords. */
+  function zoomAt(clientX, clientY, factor) {
+    if (!stage) {
+      return;
+    }
+    const rect = stage.getBoundingClientRect();
+    const cx = clientX - rect.left - rect.width / 2;
+    const cy = clientY - rect.top - rect.height / 2;
+    const next = clampViewScale(viewScale * factor);
+    if (next === viewScale) {
+      // still re-clamp in case layout changed
+      applyViewTransform();
+      return;
+    }
+    // keep the content under cursor stable:
+    // content point p = (cx - viewX) / viewScale
+    // after: viewX' = cx - p * next
+    const pX = (cx - viewX) / viewScale;
+    const pY = (cy - viewY) / viewScale;
+    viewX = cx - pX * next;
+    viewY = cy - pY * next;
+    viewScale = next;
+    applyViewTransform();
+  }
+
+  function onStageWheel(ev) {
+    if (!stage) {
+      return;
+    }
+    // always prevent page/webview scroll when over image stage
+    ev.preventDefault();
+    const delta = ev.deltaY;
+    // trackpad: small deltas; mouse wheel: larger. Use exponential zoom.
+    let factor;
+    if (ev.ctrlKey) {
+      // some systems send ctrl+wheel as pinch
+      factor = Math.exp(-delta * 0.01);
+    } else {
+      factor = Math.exp(-delta * 0.0025);
+    }
+    // normalize extreme steps
+    if (factor > 1.35) {
+      factor = 1.35;
+    }
+    if (factor < 1 / 1.35) {
+      factor = 1 / 1.35;
+    }
+    zoomAt(ev.clientX, ev.clientY, factor);
+  }
+
+  function onStagePointerDown(ev) {
+    if (!stage) {
+      return;
+    }
+    // only primary button / touch
+    if (ev.pointerType === 'mouse' && ev.button !== 0) {
+      return;
+    }
+    panActive = true;
+    panMoved = false;
+    panPointerId = ev.pointerId;
+    panLastX = ev.clientX;
+    panLastY = ev.clientY;
+    stage.classList.add('is-panning');
+    try {
+      stage.setPointerCapture(ev.pointerId);
+    } catch (e) {
+      /* ignore */
+    }
+    ev.preventDefault();
+  }
+
+  function onStagePointerMove(ev) {
+    if (!panActive || ev.pointerId !== panPointerId) {
+      return;
+    }
+    const dx = ev.clientX - panLastX;
+    const dy = ev.clientY - panLastY;
+    if (dx !== 0 || dy !== 0) {
+      panMoved = true;
+    }
+    panLastX = ev.clientX;
+    panLastY = ev.clientY;
+    viewX += dx;
+    viewY += dy;
+    applyViewTransform();
+    ev.preventDefault();
+  }
+
+  function endPan(ev) {
+    if (!panActive) {
+      return;
+    }
+    if (ev && panPointerId != null && ev.pointerId !== panPointerId) {
+      return;
+    }
+    panActive = false;
+    panPointerId = null;
+    if (stage) {
+      stage.classList.remove('is-panning');
+    }
+  }
+
+  function onStagePointerUp(ev) {
+    endPan(ev);
+  }
+
+  function onStageDblClick(ev) {
+    if (!stage) {
+      return;
+    }
+    resetView();
+    ev.preventDefault();
+  }
+
+  function bindStageView() {
+    if (!stage) {
+      return;
+    }
+    stage.addEventListener('wheel', onStageWheel, { passive: false });
+    stage.addEventListener('pointerdown', onStagePointerDown);
+    stage.addEventListener('pointermove', onStagePointerMove);
+    stage.addEventListener('pointerup', onStagePointerUp);
+    stage.addEventListener('pointercancel', onStagePointerUp);
+    stage.addEventListener('lostpointercapture', onStagePointerUp);
+    stage.addEventListener('dblclick', onStageDblClick);
+    // prevent native image drag
+    if (streamImage) {
+      streamImage.addEventListener('dragstart', function (e) {
+        e.preventDefault();
+      });
+    }
+    applyViewTransform();
+  }
+
+    function setHistUiEnabled(on) {
     if (histSpace) {
       histSpace.disabled = !on;
     }
@@ -347,6 +580,9 @@
     if (!histCharts) {
       return;
     }
+    // always stack channels vertically, equal height
+    histCharts.style.gridTemplateColumns = '1fr';
+    histCharts.style.gridTemplateRows = count > 0 ? 'repeat(' + count + ', minmax(0, 1fr))' : '';
     if (histViews.length === count) {
       return;
     }
@@ -447,48 +683,27 @@
     }
     const count = arr[bin];
     const samplePixels = histState.samplePixels || 1;
-    const pct = (count / samplePixels) * 100;
-    // cumulative percentile of this bin value
-    let below = 0;
-    for (let i = 0; i < bin; i++) {
-      below += arr[i];
-    }
-    const cdfLo = (below / samplePixels) * 100;
-    const cdfHi = ((below + count) / samplePixels) * 100;
-    const st = channelStats(arr, samplePixels);
+    const pct = samplePixels > 0 ? (count / samplePixels) * 100 : 0;
+    const label = cfg.labels[ch] || 'Ch' + ch;
     const desc = cfg.describe
       ? cfg.describe.call(cfg, ch, bin)
-      : 'value ' + bin;
-    const lines = [
+      : label + ' = ' + bin;
+    histTooltip.innerHTML =
       '<div class="tt-title">' +
-        (cfg.fullNames[ch] || cfg.labels[ch] || 'Ch' + ch) +
-        ' · bin <b>' +
-        bin +
-        '</b></div>',
-      desc,
-      'Range: ' + (cfg.units[ch] || '0–255'),
-      'Count: <b>' + count + '</b> / ' + samplePixels + ' samples',
-      'Share: <b>' + pct.toFixed(2) + '%</b>',
-      'CDF: <b>' + cdfLo.toFixed(1) + '–' + cdfHi.toFixed(1) + '%</b>',
-      'Channel mean: ' + st.mean.toFixed(1) + ' · peak ' + st.maxCount + ' @ ' + (function () {
-        let peakBin = 0;
-        let peak = 0;
-        for (let i = 0; i < HIST_BINS; i++) {
-          if (arr[i] > peak) {
-            peak = arr[i];
-            peakBin = i;
-          }
-        }
-        return peakBin;
-      })(),
-      'Sample: ' + histState.sampleW + '×' + histState.sampleH + ' · space ' + cfg.name,
-    ];
-    histTooltip.innerHTML = lines.join('\n');
+      label +
+      ' <b>' +
+      bin +
+      '</b></div>' +
+      desc +
+      '\ncount <b>' +
+      count +
+      '</b> · <b>' +
+      pct.toFixed(1) +
+      '%</b>';
     histTooltip.hidden = false;
-    // position near cursor, clamp to viewport
-    const pad = 12;
-    const tw = histTooltip.offsetWidth || 180;
-    const th = histTooltip.offsetHeight || 120;
+    const pad = 10;
+    const tw = histTooltip.offsetWidth || 140;
+    const th = histTooltip.offsetHeight || 48;
     let left = clientX + pad;
     let top = clientY + pad;
     if (left + tw > window.innerWidth - 4) {
@@ -507,20 +722,155 @@
     histTooltip.style.top = top + 'px';
   }
 
+  function formatAxisCount(n) {
+    if (n >= 1000000) {
+      return (n / 1000000).toFixed(1) + 'M';
+    }
+    if (n >= 1000) {
+      return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k';
+    }
+    return String(Math.round(n));
+  }
+
+  function niceMax(v) {
+    if (v <= 1) {
+      return 1;
+    }
+    const exp = Math.floor(Math.log10(v));
+    const base = Math.pow(10, exp);
+    const m = v / base;
+    let nice;
+    if (m <= 1) {
+      nice = 1;
+    } else if (m <= 2) {
+      nice = 2;
+    } else if (m <= 5) {
+      nice = 5;
+    } else {
+      nice = 10;
+    }
+    return nice * base;
+  }
+
+  function histCanvasCssHeight(view) {
+    // Prefer laid-out canvas box (equal vertical cells)
+    if (view && view.canvas) {
+      const ch = view.canvas.clientHeight;
+      if (ch > 8) {
+        HIST_CSS_H = ch;
+        return HIST_CSS_H;
+      }
+      // card body minus head if canvas not sized yet
+      if (view.card) {
+        const headEl = view.card.querySelector('.hist-chart-head');
+        const headH = headEl ? headEl.offsetHeight + 4 : 18;
+        const body = view.card.clientHeight - headH;
+        if (body > 8) {
+          HIST_CSS_H = body;
+          return HIST_CSS_H;
+        }
+      }
+    }
+    if (histViews && histViews.length) {
+      for (let i = 0; i < histViews.length; i++) {
+        const v = histViews[i];
+        if (v && v.canvas && v.canvas.clientHeight > 8) {
+          HIST_CSS_H = v.canvas.clientHeight;
+          return HIST_CSS_H;
+        }
+      }
+    }
+    if (!histPanel || histPanel.hidden) {
+      return Math.max(HIST_CSS_H, 56);
+    }
+    const head = histPanel.querySelector('.hist-dock-head');
+    const headH = head ? head.offsetHeight + 6 : 22;
+    const pad = 14;
+    const n = Math.max(1, (histViews && histViews.length) || (histState && histState.bins && histState.bins.length) || 3);
+    const avail = Math.max(40, (histPanel.clientHeight || histDockHeight) - headH - pad);
+    const gap = 4 * Math.max(0, n - 1);
+    const per = (avail - gap) / n;
+    // chart head ~18px inside each card
+    HIST_CSS_H = Math.max(36, Math.floor(per - 20));
+    return HIST_CSS_H;
+  }
+
+  function applyHistDockHeight(h) {
+    if (!histPanel) {
+      return;
+    }
+    const bodyH = document.body ? document.body.clientHeight : 600;
+    const maxH = Math.max(HIST_DOCK_MIN_H, Math.floor(bodyH * 0.8));
+    histDockHeight = Math.max(HIST_DOCK_MIN_H, Math.min(maxH, Math.round(h)));
+    histPanel.style.height = histDockHeight + 'px';
+    histPanel.style.maxHeight = '80%';
+  }
+
+  function bindHistResize() {
+    if (!histResize || !histPanel) {
+      return;
+    }
+    histResize.addEventListener('pointerdown', function (ev) {
+      if (ev.pointerType === 'mouse' && ev.button !== 0) {
+        return;
+      }
+      histResizeActive = true;
+      histResizeStartY = ev.clientY;
+      histResizeStartH = histPanel.getBoundingClientRect().height;
+      document.body.classList.add('hist-resizing');
+      try {
+        histResize.setPointerCapture(ev.pointerId);
+      } catch (e) {
+        /* ignore */
+      }
+      ev.preventDefault();
+      ev.stopPropagation();
+    });
+    histResize.addEventListener('pointermove', function (ev) {
+      if (!histResizeActive) {
+        return;
+      }
+      // drag handle at top of dock: drag up → taller dock
+      const dy = histResizeStartY - ev.clientY;
+      applyHistDockHeight(histResizeStartH + dy);
+      if (histState) {
+        redrawHistCharts();
+      }
+      applyViewTransform();
+      ev.preventDefault();
+    });
+    function endResize(ev) {
+      if (!histResizeActive) {
+        return;
+      }
+      histResizeActive = false;
+      document.body.classList.remove('hist-resizing');
+      if (histState) {
+        redrawHistCharts();
+      }
+      applyViewTransform();
+    }
+    histResize.addEventListener('pointerup', endResize);
+    histResize.addEventListener('pointercancel', endResize);
+    histResize.addEventListener('lostpointercapture', endResize);
+    applyHistDockHeight(histDockHeight);
+  }
+
   function drawChannelChart(view, binArr, color, hoverBin) {
     const canvas = view.canvas;
-    const cssW = Math.max(120, Math.floor(canvas.clientWidth || canvas.parentElement.clientWidth || 240));
+    const cssH = Math.max(40, histCanvasCssHeight(view));
+    const cssW = Math.max(80, Math.floor(canvas.clientWidth || (view.card && view.card.clientWidth) || 240));
     const dpr = window.devicePixelRatio || 1;
     const w = Math.max(120, Math.round(cssW * dpr));
-    const h = Math.round(HIST_CSS_H * dpr);
+    const h = Math.max(48, Math.round(cssH * dpr));
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
     }
-    const padL = Math.round(4 * dpr);
-    const padR = Math.round(4 * dpr);
-    const padT = Math.round(4 * dpr);
-    const padB = Math.round(4 * dpr);
+    const padL = Math.round(30 * dpr);
+    const padR = Math.round(8 * dpr);
+    const padT = Math.round(8 * dpr);
+    const padB = Math.round(18 * dpr);
     view.padL = padL;
     view.padR = padR;
     view.padT = padT;
@@ -534,27 +884,59 @@
     ctx.fillRect(0, 0, w, h);
     const plotW = w - padL - padR;
     const plotH = h - padT - padB;
-    // grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-    ctx.lineWidth = Math.max(1, dpr * 0.75);
-    for (let i = 1; i < 4; i++) {
-      const y = padT + (plotH * i) / 4;
-      ctx.beginPath();
-      ctx.moveTo(padL, y);
-      ctx.lineTo(padL + plotW, y);
-      ctx.stroke();
-    }
     let maxVal = 1;
     for (let i = 0; i < HIST_BINS; i++) {
       if (binArr[i] > maxVal) {
         maxVal = binArr[i];
       }
     }
+    const yMax = niceMax(maxVal);
+    // grid + Y ticks
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = Math.max(1, dpr * 0.75);
+    ctx.fillStyle = 'rgba(180,180,180,0.85)';
+    ctx.font = Math.max(9, Math.round(9 * dpr)) + 'px ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const yTicks = 4;
+    for (let i = 0; i <= yTicks; i++) {
+      const t = i / yTicks;
+      const y = padT + plotH * (1 - t);
+      const val = yMax * t;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + plotW, y);
+      ctx.stroke();
+      ctx.fillText(formatAxisCount(val), padL - 4 * dpr, y);
+    }
+    // X ticks: 0, 64, 128, 192, 255
+    const xTickVals = [0, 64, 128, 192, 255];
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    for (let ti = 0; ti < xTickVals.length; ti++) {
+      const bv = xTickVals[ti];
+      const x = padL + (bv / (HIST_BINS - 1)) * plotW;
+      ctx.beginPath();
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, padT + plotH);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(180,180,180,0.85)';
+      ctx.fillText(String(bv), x, padT + plotH + 3 * dpr);
+    }
+    // axes
+    ctx.strokeStyle = 'rgba(220,220,220,0.45)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + plotH);
+    ctx.lineTo(padL + plotW, padT + plotH);
+    ctx.stroke();
     // filled area + stroke
     ctx.beginPath();
     for (let i = 0; i < HIST_BINS; i++) {
       const x = padL + (i / (HIST_BINS - 1)) * plotW;
-      const y = padT + plotH - (binArr[i] / maxVal) * plotH;
+      const y = padT + plotH - (binArr[i] / yMax) * plotH;
       if (i === 0) {
         ctx.moveTo(x, y);
       } else {
@@ -575,7 +957,7 @@
     // hover marker
     if (hoverBin != null && hoverBin >= 0) {
       const x = padL + (hoverBin / (HIST_BINS - 1)) * plotW;
-      const y = padT + plotH - (binArr[hoverBin] / maxVal) * plotH;
+      const y = padT + plotH - (binArr[hoverBin] / yMax) * plotH;
       ctx.strokeStyle = 'rgba(255,255,255,0.55)';
       ctx.lineWidth = Math.max(1, dpr);
       ctx.beginPath();
@@ -639,7 +1021,7 @@
         sampleW +
         '×' +
         sampleH +
-        ' samples · ' +
+        ' · ' +
         bins.length +
         ' ch';
     }
@@ -649,8 +1031,19 @@
       hideHistTooltip();
     }
     redrawHistCharts();
+    // first layout often has 0-size canvases; redraw after flex/grid settles
+    requestAnimationFrame(function () {
+      if (!histState) {
+        return;
+      }
+      redrawHistCharts();
+      requestAnimationFrame(function () {
+        if (histState) {
+          redrawHistCharts();
+        }
+      });
+    });
     if (histHover) {
-      // refresh tooltip counts without needing last mouse event coords
       const view = histViews[histHover.ch];
       if (view) {
         const rect = view.canvas.getBoundingClientRect();
@@ -730,13 +1123,20 @@
     const on = !!(histogramToggle && histogramToggle.checked);
     setHistUiEnabled(on);
     if (on) {
+      applyHistDockHeight(histDockHeight);
       histThrottle = 0;
+      // auto-start stream when enabling hist so data arrives
+      if (!isStreaming && currentDevice && httpBase) {
+        startStream();
+      }
       // layout then compute so canvas clientWidth is valid
       requestAnimationFrame(function () {
         scheduleHistogram();
+        applyViewTransform();
       });
     } else {
       clearHistogram();
+      applyViewTransform();
     }
   }
 
@@ -797,17 +1197,17 @@
   function resetMetrics() {
     frameCount = 0;
     lastFPSUpdate = performance.now();
-    fpsValue.textContent = '0';
-    frameSizeValue.textContent = '0';
-    resolutionValue.textContent = '-';
-    latencyValue.textContent = '-';
+    metricFps = '0';
+    metricKb = '0';
+    metricRes = '-';
+    metricLatency = '-';
   }
 
   function bumpFps() {
     frameCount++;
     const now = performance.now();
     if (now - lastFPSUpdate >= 1000) {
-      fpsValue.textContent = String(frameCount);
+      metricFps = String(frameCount);
       frameCount = 0;
       lastFPSUpdate = now;
     }
@@ -818,22 +1218,22 @@
     const now = performance.now();
     if (!force && now - metaThrottle < 100) {
       if (size != null) {
-        frameSizeValue.textContent = String(Math.round(size / 1024));
+        metricKb = String(Math.round(size / 1024));
       }
       updateOverlay();
       return;
     }
     metaThrottle = now;
     if (size != null) {
-      frameSizeValue.textContent = String(Math.round(size / 1024));
+      metricKb = String(Math.round(size / 1024));
     }
     if (meta) {
       if (meta.width && meta.height) {
-        resolutionValue.textContent = meta.width + '\u00d7' + meta.height;
+        metricRes = meta.width + '\u00d7' + meta.height;
       }
       if (meta.ts) {
         const ts = typeof meta.ts === 'string' ? parseInt(meta.ts, 10) : meta.ts;
-        latencyValue.textContent = Math.max(0, Date.now() - ts) + 'ms';
+        metricLatency = Math.max(0, Date.now() - ts) + 'ms';
       }
     }
     updateOverlay();
@@ -845,14 +1245,20 @@
       return;
     }
     imageOverlay.style.display = 'block';
+    let zoomTxt = '';
+    if (Math.abs(viewScale - 1) >= 0.001) {
+      zoomTxt = ' · ' + Math.round(viewScale * 100) + '%';
+    }
     overlayInfo.textContent =
-      fpsValue.textContent +
+      metricFps +
       'fps · ' +
-      frameSizeValue.textContent +
+      metricKb +
       'KB · ' +
-      latencyValue.textContent +
+      metricLatency +
+      (metricRes !== '-' ? ' · ' + metricRes : '') +
       ' · ' +
-      currentMode.toUpperCase();
+      currentMode.toUpperCase() +
+      zoomTxt;
   }
 
   function clearTimers() {
@@ -1242,12 +1648,15 @@
   }
   let histResizeTimer = null;
   window.addEventListener('resize', function () {
-    if (!histState) {
-      return;
-    }
     clearTimeout(histResizeTimer);
     histResizeTimer = setTimeout(function () {
-      redrawHistCharts();
+      if (histPanel && !histPanel.hidden) {
+        applyHistDockHeight(histDockHeight);
+      }
+      applyViewTransform();
+      if (histState) {
+        redrawHistCharts();
+      }
     }, 80);
   });
   streamModes.forEach(function (mode) {
@@ -1276,6 +1685,11 @@
       }
       fillDevices(message.devices || []);
       log(httpBase || 'no service');
+      // Hist defaults on: show dock immediately
+      if (histogramToggle && histogramToggle.checked) {
+        setHistUiEnabled(true);
+        applyHistDockHeight(histDockHeight);
+      }
       if (message.autoStart && currentDevice) {
         startStream();
       }
@@ -1287,5 +1701,11 @@
     }
   });
 
+  bindStageView();
+  bindHistResize();
+  if (histogramToggle && histogramToggle.checked) {
+    setHistUiEnabled(true);
+    applyHistDockHeight(histDockHeight);
+  }
   vscode.postMessage({ type: 'ready' });
 })();

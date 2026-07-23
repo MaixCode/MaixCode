@@ -343,7 +343,6 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     const tAuto = this.escapeHtml(vscode.l10n.t("Auto"));
     const tAutoReconnect = this.escapeHtml(vscode.l10n.t("Auto reconnect"));
     const tIdle = this.escapeHtml(vscode.l10n.t("Idle"));
-    const tMetrics = this.escapeHtml(vscode.l10n.t("FPS · KB · resolution · latency"));
     const tHistogram = this.escapeHtml(vscode.l10n.t("Histogram"));
     const tTitle = this.escapeHtml(vscode.l10n.t("MaixCAM Image"));
     return `<!DOCTYPE html>
@@ -370,7 +369,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     <button type="button" class="btn" id="screenshotBtn" disabled title="${tScreenshot}">${tShot}</button>
     <input type="number" id="intervalInput" value="33" min="16" max="2000" step="1" title="${tInterval}" />
     <label class="chk" title="${tOverlay}"><input type="checkbox" id="overlayToggle" checked /> HUD</label>
-    <label class="chk" title="${tHist}"><input type="checkbox" id="histogramToggle" /> Hist</label>
+    <label class="chk" title="${tHist}"><input type="checkbox" id="histogramToggle" checked /> Hist</label>
     <select id="histSpace" title="${tHistSpace}" disabled>
       <option value="rgb" selected>RGB</option>
       <option value="gray">GRAY</option>
@@ -380,20 +379,16 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     </select>
     <label class="chk" title="${tAutoReconnect}"><input type="checkbox" id="autoReconnect" checked /> ${tAuto}</label>
     <div class="status idle" id="connectionStatus">${tIdle}</div>
-    <div class="metrics-inline" title="${tMetrics}">
-      <span><b id="fpsValue">0</b> fps</span>
-      <span><b id="frameSizeValue">0</b> KB</span>
-      <span id="resolutionValue">-</span>
-      <span id="latencyValue">-</span>
-    </div>
   </div>
-  <div class="stage">
-    <img id="streamImage" alt="" />
+  <div class="stage" id="stage">
+    <img id="streamImage" alt="" draggable="false" />
     <div class="overlay" id="imageOverlay" style="display:none;">
       <div id="overlayInfo"></div>
     </div>
+    <div class="zoom-badge" id="zoomBadge" hidden>100%</div>
   </div>
   <div class="hist-dock" id="histPanel" hidden>
+    <div class="hist-resize" id="histResize"></div>
     <div class="hist-dock-head">
       <span class="hist-dock-title">${tHistogram}</span>
       <span class="hist-dock-meta" id="histMeta">-</span>
