@@ -93,6 +93,7 @@ export class SftpSession {
     );
   }
 
+  /** Follow symlinks (may fail with SSH_FX_FAILURE on broken/odd links). */
   stat(remotePath: string): Promise<Stats> {
     return this.withSftp(
       (sftp) =>
@@ -106,6 +107,121 @@ export class SftpSession {
           });
         })
     );
+  }
+
+  /** Do not follow symlinks. */
+  lstat(remotePath: string): Promise<Stats> {
+    return this.withSftp(
+      (sftp) =>
+        new Promise((resolve, reject) => {
+          sftp.lstat(remotePath, (err, stats) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve(stats);
+          });
+        })
+    );
+  }
+
+  readlink(remotePath: string): Promise<string> {
+    return this.withSftp(
+      (sftp) =>
+        new Promise((resolve, reject) => {
+          sftp.readlink(remotePath, (err, target) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve(target || "");
+          });
+        })
+    );
+  }
+
+  /**
+   * Prefer stat (follow); on generic Failure fall back to lstat so broken or
+   * device-odd symlinks still appear in Explorer.
+   */
+  async statPreferFollow(remotePath: string): Promise<{
+    stats: Stats;
+    followed: boolean;
+    linkTarget?: string;
+    /** True when path is a symlink (even if target was also stat'd). */
+    isLink: boolean;
+  }> {
+    try {
+      const lst = await this.lstat(remotePath);
+      if (!lst.isSymbolicLink()) {
+        return { stats: lst, followed: true, isLink: false };
+      }
+      let linkTarget: string | undefined;
+      try {
+        linkTarget = await this.readlink(remotePath);
+      } catch {
+        // ignore
+      }
+      // Follow for target type (directory vs file)
+      try {
+        const stats = await this.stat(remotePath);
+        return {
+          stats,
+          followed: true,
+          linkTarget,
+          isLink: true,
+        };
+      } catch {
+        // Broken or server Failure on follow: keep lstat, try realpath+stat
+        try {
+          const abs = await this.realpath(remotePath);
+          const stats = await this.stat(abs);
+          return {
+            stats,
+            followed: true,
+            linkTarget: linkTarget || abs,
+            isLink: true,
+          };
+        } catch {
+          return {
+            stats: lst,
+            followed: false,
+            linkTarget,
+            isLink: true,
+          };
+        }
+      }
+    } catch {
+      // lstat failed: last resort plain stat
+      const stats = await this.stat(remotePath);
+      return { stats, followed: true, isLink: false };
+    }
+  }
+
+  /**
+   * Resolve path for directory listing / open. Symlink dirs need realpath
+   * because readdir(link) often returns SSH_FX_FAILURE on busybox/dropbear.
+   */
+  async resolveForList(remotePath: string): Promise<string> {
+    try {
+      const lst = await this.lstat(remotePath);
+      if (lst.isSymbolicLink()) {
+        try {
+          return await this.realpath(remotePath);
+        } catch {
+          // try manual join from readlink
+          try {
+            const target = await this.readlink(remotePath);
+            return resolveSymlinkTarget(remotePath, target);
+          } catch {
+            return remotePath;
+          }
+        }
+      }
+    } catch {
+      // ignore; try as-is
+    }
+    return remotePath;
   }
 
   readdir(remotePath: string): Promise<FileEntry[]> {
@@ -209,7 +325,17 @@ export class SftpSession {
   }
 
   async rmRecursive(remotePath: string): Promise<void> {
-    const st = await this.stat(remotePath);
+    // Never follow symlinks into trees; unlink the link itself.
+    let st: Stats;
+    try {
+      st = await this.lstat(remotePath);
+    } catch {
+      st = await this.stat(remotePath);
+    }
+    if (st.isSymbolicLink()) {
+      await this.unlink(remotePath);
+      return;
+    }
     if (st.isDirectory()) {
       const list = await this.readdir(remotePath);
       for (const ent of list) {
@@ -360,4 +486,40 @@ export class SftpSession {
     }
     this.client = undefined;
   }
+}
+
+/** Join relative readlink target against link location (POSIX). */
+export function resolveSymlinkTarget(
+  linkPath: string,
+  target: string
+): string {
+  const t = (target || "").trim();
+  if (!t) {
+    return linkPath;
+  }
+  if (t.startsWith("/")) {
+    return normalizePosix(t);
+  }
+  const parent =
+    linkPath === "/"
+      ? "/"
+      : linkPath.slice(0, linkPath.lastIndexOf("/")) || "/";
+  return normalizePosix(parent === "/" ? `/${t}` : `${parent}/${t}`);
+}
+
+function normalizePosix(p: string): string {
+  let s = p.replace(/\\/g, "/");
+  if (!s.startsWith("/")) {
+    s = "/" + s;
+  }
+  const parts = s.split("/").filter((x) => x.length > 0 && x !== ".");
+  const stack: string[] = [];
+  for (const part of parts) {
+    if (part === "..") {
+      stack.pop();
+    } else {
+      stack.push(part);
+    }
+  }
+  return stack.length ? "/" + stack.join("/") : "/";
 }

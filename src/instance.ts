@@ -69,6 +69,12 @@ export class Instance {
             // ignore
           }
         }
+        this.sftpService.tryAutoOpenFromConnected(
+          this.deviceManager.getConnectedDevice().map((d) => ({
+            host: d.device?.ip || "",
+            deviceName: d.device?.name,
+          }))
+        );
       },
     });
 
@@ -112,6 +118,18 @@ export class Instance {
         ) {
           this.deviceManager.clearAutoConnectSuppress();
           this.deviceManager.tryAutoConnect();
+        }
+        if (
+          e.affectsConfiguration(
+            `${ConfigSection}.${ConfigKeys.autoOpenSftp}`
+          )
+        ) {
+          this.sftpService.tryAutoOpenFromConnected(
+            this.deviceManager.getConnectedDevice().map((d) => ({
+              host: d.device?.ip || "",
+              deviceName: d.device?.name,
+            }))
+          );
         }
         if (
           e.affectsConfiguration(

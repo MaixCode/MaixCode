@@ -13,6 +13,16 @@ export namespace Commands {
   /** Open device SFTP as virtual FS workspace folder */
   export const openDeviceSftp = "maixcode.openDeviceSftp";
 
+  /** SFTP Explorer: add path to hide patterns */
+  export const sftpFilterPath = "maixcode.sftpFilterPath";
+  /** SFTP Explorer: remove matching hide pattern */
+  export const sftpUnfilterPath = "maixcode.sftpUnfilterPath";
+  /** Toggle showing filtered entries with badges */
+  export const sftpToggleShowFiltered = "maixcode.sftpToggleShowFiltered";
+  export const sftpEditFilterPatterns = "maixcode.sftpEditFilterPatterns";
+  /** Re-list SFTP directory / refresh Explorer tree */
+  export const sftpRefresh = "maixcode.sftpRefresh";
+
   // Image Viewer Commands
   export const openImageViewer = "maixcode.openImageViewer";
 
@@ -50,6 +60,10 @@ export namespace ConfigKeys {
   /** Glob or /regex/ patterns to hide from SFTP Explorer listings */
   export const sftpHidePatterns = "sftpHidePatterns";
   export const sftpReadOnly = "sftpReadOnly";
+  /** When true, filtered items still appear in Explorer (with decoration). */
+  export const sftpShowFiltered = "sftpShowFiltered";
+  /** Auto-mount SFTP workspace folder when a device connects */
+  export const autoOpenSftp = "autoOpenSftp";
 }
 
 /** globalState key: last successfully connected device { name, ip } */

@@ -2,8 +2,13 @@ import * as vscode from "vscode";
 import { ConfigKeys, ConfigSection } from "../../constants";
 import { error, formatUnknown, log } from "../../logger";
 import { readSshCredentials } from "./credentials";
-import { compileSftpHidePatterns } from "./sftp_path_filter";
+import {
+  compileSftpHidePatterns,
+  normalizeRemotePath,
+  patternForPath,
+} from "./sftp_path_filter";
 import { SftpSession } from "./sftp_session";
+import { SftpFileDecorationProvider } from "../../ui/provider/sftp_decoration";
 import {
   buildSftpUri,
   SftpFileSystemProvider,
@@ -13,6 +18,8 @@ export type OpenSftpRequest = {
   host: string;
   deviceName?: string;
   port?: number;
+  /** Suppress notifications / Explorer focus (auto-open). */
+  quiet?: boolean;
 };
 
 /**
@@ -21,13 +28,18 @@ export type OpenSftpRequest = {
  */
 export class SftpService {
   private readonly fs: SftpFileSystemProvider;
+  private readonly decorations: SftpFileDecorationProvider;
   private disposed = false;
   private providerRegistered = false;
+  /** Hosts currently opening via auto-open (dedupe). */
+  private autoOpenInFlight = new Set<string>();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.fs = new SftpFileSystemProvider();
+    this.decorations = new SftpFileDecorationProvider(this.fs);
     this.ensureProviderRegistered();
     context.subscriptions.push(
+      vscode.window.registerFileDecorationProvider(this.decorations),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (
           e.affectsConfiguration(
@@ -35,11 +47,20 @@ export class SftpService {
           ) ||
           e.affectsConfiguration(
             `${ConfigSection}.${ConfigKeys.sftpReadOnly}`
+          ) ||
+          e.affectsConfiguration(
+            `${ConfigSection}.${ConfigKeys.sftpShowFiltered}`
           )
         ) {
           this.fs.reloadFiltersFromConfig();
+          this.fs.notifyExplorerRefresh(true);
+          this.decorations.refresh();
+          void vscode.commands.executeCommand(
+            "workbench.files.action.refreshFilesExplorer"
+          );
         }
-      })
+      }),
+      { dispose: () => this.decorations.dispose() }
     );
   }
 
@@ -80,20 +101,42 @@ export class SftpService {
     );
     const readOnly = cfg.get<boolean>(ConfigKeys.sftpReadOnly, false);
     const hidePatterns = cfg.get<string[]>(ConfigKeys.sftpHidePatterns, []);
+    const showFiltered = cfg.get<boolean>(ConfigKeys.sftpShowFiltered, false);
     const filter = compileSftpHidePatterns(hidePatterns);
 
     const authority = sanitizeAuthority(
       (req.deviceName || "").trim() || host
     );
 
+    // Already mounted & healthy for this authority/host → skip
+    const existing = this.fs.getMount(authority);
+    if (
+      existing &&
+      existing.host === host &&
+      existing.session.isConnected
+    ) {
+      if (!req.quiet) {
+        const folderUri = buildSftpUri(authority, existing.remoteRoot);
+        await this.ensureWorkspaceFolder(
+          folderUri,
+          `MaixSFTP: ${req.deviceName || host}`
+        );
+        await vscode.commands.executeCommand("revealInExplorer", folderUri);
+      }
+      log(`[SFTP] already open authority=${authority} host=${host}`);
+      return;
+    }
+
+    const quiet = !!req.quiet;
     await vscode.window.withProgress(
       {
-        location: vscode.ProgressLocation.Notification,
+        location: quiet
+          ? vscode.ProgressLocation.Window
+          : vscode.ProgressLocation.Notification,
         title: `SFTP: connecting ${host}...`,
         cancellable: false,
       },
       async () => {
-        const existing = this.fs.getMount(authority);
         if (existing) {
           this.fs.unregisterMount(authority);
         }
@@ -124,21 +167,304 @@ export class SftpService {
             session,
             filter,
             readOnly,
+            showFiltered,
           });
 
           const folderUri = buildSftpUri(authority, resolved);
           const name = `MaixSFTP: ${req.deviceName || host}`;
           await this.ensureWorkspaceFolder(folderUri, name);
-          await vscode.commands.executeCommand("revealInExplorer", folderUri);
-          log(`[SFTP] opened ${folderUri.toString()}`);
-          vscode.window.showInformationMessage(`Opened ${name}`);
+          if (!quiet) {
+            await vscode.commands.executeCommand("revealInExplorer", folderUri);
+            vscode.window.showInformationMessage(`Opened ${name}`);
+          }
+          log(
+            `[SFTP] opened ${folderUri.toString()}${quiet ? " (auto)" : ""}`
+          );
         } catch (e) {
           session.dispose();
-          error(`[SFTP] open failed: ${formatUnknown(e)}`, true);
+          if (quiet) {
+            error(`[SFTP] auto-open failed: ${formatUnknown(e)}`);
+          } else {
+            error(`[SFTP] open failed: ${formatUnknown(e)}`, true);
+          }
           throw e;
         }
       }
     );
+  }
+
+  /**
+   * Mount SFTP for each connected device when maixcode.autoOpenSftp is true.
+   * Idempotent; skips hosts already mounted or in-flight.
+   */
+  tryAutoOpenFromConnected(
+    devices: Array<{ host: string; deviceName?: string }>
+  ): void {
+    if (this.disposed) {
+      return;
+    }
+    const cfg = vscode.workspace.getConfiguration(ConfigSection);
+    if (!cfg.get<boolean>(ConfigKeys.autoOpenSftp, true)) {
+      return;
+    }
+    for (const d of devices) {
+      const host = (d.host || "").trim();
+      if (!host) {
+        continue;
+      }
+      const authority = sanitizeAuthority(
+        (d.deviceName || "").trim() || host
+      );
+      const mount = this.fs.getMount(authority);
+      if (mount && mount.host === host && mount.session.isConnected) {
+        continue;
+      }
+      // same host under different authority
+      if (
+        this.fs
+          .listMounts()
+          .some((m) => m.host === host && m.session.isConnected)
+      ) {
+        continue;
+      }
+      if (this.autoOpenInFlight.has(host)) {
+        continue;
+      }
+      this.autoOpenInFlight.add(host);
+      void this.open({
+        host,
+        deviceName: d.deviceName,
+        quiet: true,
+      })
+        .catch((e) => {
+          log(`[SFTP] tryAutoOpen skip ${host}: ${formatUnknown(e)}`);
+        })
+        .finally(() => {
+          this.autoOpenInFlight.delete(host);
+        });
+    }
+  }
+
+  /**
+   * Add path (or basename) to maixcode.sftpHidePatterns and refresh Explorer.
+   */
+  async filterUri(uri: vscode.Uri): Promise<void> {
+    if (uri.scheme !== SftpFileSystemProvider.scheme) {
+      vscode.window.showErrorMessage("Not a MaixSFTP path");
+      return;
+    }
+    const remote = this.fs.remotePathOf(uri);
+    const basename = remote.split("/").filter(Boolean).pop() || remote;
+    const pattern = patternForPath(remote, basename);
+
+    const cfg = vscode.workspace.getConfiguration(ConfigSection);
+    const list = [
+      ...(cfg.get<string[]>(ConfigKeys.sftpHidePatterns, []) || []),
+    ];
+    if (list.some((p) => p === pattern || p === basename)) {
+      vscode.window.showInformationMessage(
+        `Already filtered: ${pattern}`
+      );
+      return;
+    }
+    list.push(pattern);
+    const show = cfg.get<boolean>(ConfigKeys.sftpShowFiltered, false);
+    const readOnly = cfg.get<boolean>(ConfigKeys.sftpReadOnly, false);
+    // Apply immediately (settings event can lag); then persist.
+    this.fs.applyFilterState({ patterns: list, readOnly, showFiltered: show });
+    this.fs.refreshUri(uri, show ? "change" : "hide");
+    this.decorations.refresh(uri);
+    await cfg.update(
+      ConfigKeys.sftpHidePatterns,
+      list,
+      vscode.ConfigurationTarget.Global
+    );
+    this.fs.applyFilterState({ patterns: list, readOnly, showFiltered: show });
+    this.fs.refreshUri(uri, show ? "change" : "hide");
+    this.decorations.refresh();
+    void vscode.commands.executeCommand(
+      "workbench.files.action.refreshFilesExplorer"
+    );
+    log(`[SFTP] filter added: ${pattern}`);
+    if (!show) {
+      const pick = await vscode.window.showInformationMessage(
+        `Filtered "${basename}" (pattern: ${pattern}). Hidden in Explorer.`,
+        "Show Filtered Items",
+        "Edit Patterns"
+      );
+      if (pick === "Show Filtered Items") {
+        this.fs.applyFilterState({
+          patterns: list,
+          readOnly,
+          showFiltered: true,
+        });
+        this.fs.refreshUri(uri, "show");
+        this.decorations.refresh(uri);
+        await cfg.update(
+          ConfigKeys.sftpShowFiltered,
+          true,
+          vscode.ConfigurationTarget.Global
+        );
+        this.fs.applyFilterState({
+          patterns: list,
+          readOnly,
+          showFiltered: true,
+        });
+        this.fs.notifyExplorerRefresh(true);
+        this.decorations.refresh();
+        void vscode.commands.executeCommand(
+          "workbench.files.action.refreshFilesExplorer"
+        );
+      } else if (pick === "Edit Patterns") {
+        await vscode.commands.executeCommand(
+          "workbench.action.openSettings",
+          "maixcode.sftpHidePatterns"
+        );
+      }
+    } else {
+      vscode.window.showInformationMessage(
+        `Filtered "${basename}" — badge "H" marks filtered items.`
+      );
+    }
+  }
+
+  async unfilterUri(uri: vscode.Uri): Promise<void> {
+    if (uri.scheme !== SftpFileSystemProvider.scheme) {
+      vscode.window.showErrorMessage("Not a MaixSFTP path");
+      return;
+    }
+    const remote = normalizeRemotePath(this.fs.remotePathOf(uri));
+    const basename = remote.split("/").filter(Boolean).pop() || remote;
+    const match = this.fs.getFilterMatch(uri);
+
+    const cfg = vscode.workspace.getConfiguration(ConfigSection);
+    const list = [
+      ...(cfg.get<string[]>(ConfigKeys.sftpHidePatterns, []) || []),
+    ];
+    const next = list.filter((p) => {
+      const t = (p || "").trim();
+      if (!t) {
+        return false;
+      }
+      if (match && t === match) {
+        return false;
+      }
+      if (t === remote || t === basename) {
+        return false;
+      }
+      return true;
+    });
+    let finalPatterns: string[];
+    if (next.length === list.length) {
+      if (!list.length) {
+        vscode.window.showInformationMessage("No filter patterns configured.");
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(list, {
+        title: "Remove filter pattern",
+        placeHolder: "Select pattern to remove",
+      });
+      if (!picked) {
+        return;
+      }
+      finalPatterns = list.filter((p) => p !== picked);
+    } else {
+      finalPatterns = next;
+    }
+
+    const show = cfg.get<boolean>(ConfigKeys.sftpShowFiltered, false);
+    const readOnly = cfg.get<boolean>(ConfigKeys.sftpReadOnly, false);
+    this.fs.applyFilterState({
+      patterns: finalPatterns,
+      readOnly,
+      showFiltered: show,
+    });
+    this.fs.refreshUri(uri, "show");
+    this.decorations.refresh(uri);
+
+    await cfg.update(
+      ConfigKeys.sftpHidePatterns,
+      finalPatterns,
+      vscode.ConfigurationTarget.Global
+    );
+    this.fs.applyFilterState({
+      patterns: finalPatterns,
+      readOnly,
+      showFiltered: show,
+    });
+    this.fs.refreshUri(uri, "show");
+    this.decorations.refresh();
+    void vscode.commands.executeCommand(
+      "workbench.files.action.refreshFilesExplorer"
+    );
+    vscode.window.showInformationMessage(
+      `Unfiltered: ${basename}${match ? ` (was ${match})` : ""}`
+    );
+  }
+
+  async toggleShowFiltered(): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration(ConfigSection);
+    const cur = cfg.get<boolean>(ConfigKeys.sftpShowFiltered, false);
+    const nextVal = !cur;
+    const patterns =
+      cfg.get<string[]>(ConfigKeys.sftpHidePatterns, []) || [];
+    const readOnly = cfg.get<boolean>(ConfigKeys.sftpReadOnly, false);
+    this.fs.applyFilterState({
+      patterns,
+      readOnly,
+      showFiltered: nextVal,
+    });
+    this.fs.notifyExplorerRefresh(true);
+    this.decorations.refresh();
+    await cfg.update(
+      ConfigKeys.sftpShowFiltered,
+      nextVal,
+      vscode.ConfigurationTarget.Global
+    );
+    this.fs.applyFilterState({
+      patterns,
+      readOnly,
+      showFiltered: nextVal,
+    });
+    this.fs.notifyExplorerRefresh(true);
+    this.decorations.refresh();
+    void vscode.commands.executeCommand(
+      "workbench.files.action.refreshFilesExplorer"
+    );
+    vscode.window.showInformationMessage(
+      nextVal
+        ? 'Show Filtered Items: ON (filtered entries show badge "H")'
+        : "Show Filtered Items: OFF (filtered entries hidden)"
+    );
+  }
+
+  async editFilterPatterns(): Promise<void> {
+    await vscode.commands.executeCommand(
+      "workbench.action.openSettings",
+      "maixcode.sftpHidePatterns"
+    );
+  }
+
+  /**
+   * Refresh Explorer listing for a path or all SFTP mounts.
+   * Does not re-auth; re-triggers readDirectory via onDidChangeFile.
+   */
+  refresh(uri?: vscode.Uri): void {
+    if (uri && uri.scheme === SftpFileSystemProvider.scheme) {
+      this.fs.refreshUri(uri, "change");
+      this.decorations.refresh(uri);
+      void vscode.commands.executeCommand(
+        "workbench.files.action.refreshFilesExplorer"
+      );
+      log(`[SFTP] refresh ${uri.toString()}`);
+      return;
+    }
+    this.fs.notifyExplorerRefresh(true);
+    this.decorations.refresh();
+    void vscode.commands.executeCommand(
+      "workbench.files.action.refreshFilesExplorer"
+    );
+    log("[SFTP] refresh all mounts");
   }
 
   dispose(): void {

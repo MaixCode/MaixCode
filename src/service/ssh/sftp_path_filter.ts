@@ -1,5 +1,5 @@
 /**
- * Hide remote paths from Explorer listings.
+ * Hide / mark remote paths in SFTP Explorer listings.
  * Each pattern is either:
  * - a glob (* ? ** ; / path sep)
  * - or a JS regex literal: /pattern/flags
@@ -8,52 +8,87 @@
  */
 
 export type CompiledSftpFilter = {
-  /** true if the entry should be hidden from readDirectory */
+  /** true if the entry matches a hide/filter pattern */
   shouldHide: (remotePath: string, basename: string) => boolean;
+  /** matching pattern string, or undefined */
+  matchPattern: (remotePath: string, basename: string) => string | undefined;
+  patterns: string[];
 };
 
 export function compileSftpHidePatterns(
   patterns: string[] | undefined
 ): CompiledSftpFilter {
+  const rawList = (patterns ?? [])
+    .map((p) => (p || "").trim())
+    .filter((p) => p.length > 0);
+
   const compiled: Array<{
+    raw: string;
     kind: "glob" | "regex";
     re?: RegExp;
     glob?: string;
   }> = [];
 
-  for (const raw of patterns ?? []) {
-    const p = (raw || "").trim();
-    if (!p) {
-      continue;
-    }
+  for (const p of rawList) {
     const regexLit = tryParseRegexLiteral(p);
     if (regexLit) {
-      compiled.push({ kind: "regex", re: regexLit });
+      compiled.push({ raw: p, kind: "regex", re: regexLit });
       continue;
     }
-    compiled.push({ kind: "glob", glob: p });
+    compiled.push({ raw: p, kind: "glob", glob: p });
   }
 
+  const matchPattern = (
+    remotePath: string,
+    basename: string
+  ): string | undefined => {
+    if (!compiled.length) {
+      return undefined;
+    }
+    const full = normalizeRemotePath(remotePath);
+    for (const c of compiled) {
+      if (c.kind === "regex" && c.re) {
+        if (c.re.test(basename) || c.re.test(full)) {
+          return c.raw;
+        }
+        continue;
+      }
+      if (c.glob && matchGlob(c.glob, basename, full)) {
+        return c.raw;
+      }
+    }
+    return undefined;
+  };
+
   return {
+    patterns: rawList,
+    matchPattern,
     shouldHide(remotePath: string, basename: string): boolean {
-      if (!compiled.length) {
-        return false;
-      }
-      const full = normalizeRemotePath(remotePath);
-      for (const c of compiled) {
-        if (c.kind === "regex" && c.re) {
-          if (c.re.test(basename) || c.re.test(full)) {
-            return true;
-          }
-          continue;
-        }
-        if (c.glob && matchGlob(c.glob, basename, full)) {
-          return true;
-        }
-      }
-      return false;
+      return matchPattern(remotePath, basename) !== undefined;
     },
   };
+}
+
+/** Prefer exact full path; fall back to basename for simple names. */
+export function patternForPath(remotePath: string, basename: string): string {
+  const full = normalizeRemotePath(remotePath);
+  // Prefer full path for directories so only that node is filtered
+  if (full && full !== "/") {
+    return full;
+  }
+  return basename;
+}
+
+export function normalizeRemotePath(p: string): string {
+  let s = p.replace(/\\/g, "/");
+  if (!s.startsWith("/")) {
+    s = "/" + s;
+  }
+  s = s.replace(/\/+/g, "/");
+  if (s.length > 1 && s.endsWith("/")) {
+    s = s.slice(0, -1);
+  }
+  return s;
 }
 
 function tryParseRegexLiteral(s: string): RegExp | undefined {
@@ -74,18 +109,6 @@ function tryParseRegexLiteral(s: string): RegExp | undefined {
   } catch {
     return undefined;
   }
-}
-
-function normalizeRemotePath(p: string): string {
-  let s = p.replace(/\\/g, "/");
-  if (!s.startsWith("/")) {
-    s = "/" + s;
-  }
-  s = s.replace(/\/+/g, "/");
-  if (s.length > 1 && s.endsWith("/")) {
-    s = s.slice(0, -1);
-  }
-  return s;
 }
 
 function matchGlob(

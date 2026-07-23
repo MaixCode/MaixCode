@@ -120,6 +120,34 @@
         "title": "Run Current File on Device",
         "icon": "$(play)",
         "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.sftpFilterPath",
+        "title": "Filter (Hide in SFTP)",
+        "category": "MaixCode",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "maixcode.sftpUnfilterPath",
+        "title": "Unfilter (Show in SFTP)",
+        "category": "MaixCode",
+        "icon": "$(filter-filled)"
+      },
+      {
+        "command": "maixcode.sftpToggleShowFiltered",
+        "title": "Toggle Show Filtered SFTP Items",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.sftpEditFilterPatterns",
+        "title": "Edit SFTP Filter Patterns",
+        "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.sftpRefresh",
+        "title": "Refresh SFTP",
+        "icon": "$(refresh)",
+        "category": "MaixCode"
       }
     ],
     "menus": {
@@ -167,6 +195,11 @@
           "command": "maixcode.runOnDevice",
           "when": "resourceLangId == python",
           "group": "navigation"
+        },
+        {
+          "command": "maixcode.sftpRefresh",
+          "when": "resourceScheme == maixsftp",
+          "group": "navigation"
         }
       ],
       "editor/context": [
@@ -174,6 +207,33 @@
           "command": "maixcode.runOnDevice",
           "when": "resourceLangId == python",
           "group": "navigation@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "maixcode.sftpRefresh",
+          "when": "resourceScheme == maixsftp",
+          "group": "navigation@1"
+        },
+        {
+          "command": "maixcode.sftpFilterPath",
+          "when": "resourceScheme == maixsftp",
+          "group": "maixcode@1"
+        },
+        {
+          "command": "maixcode.sftpUnfilterPath",
+          "when": "resourceScheme == maixsftp",
+          "group": "maixcode@2"
+        },
+        {
+          "command": "maixcode.sftpToggleShowFiltered",
+          "when": "resourceScheme == maixsftp",
+          "group": "maixcode@3"
+        },
+        {
+          "command": "maixcode.sftpEditFilterPatterns",
+          "when": "resourceScheme == maixsftp",
+          "group": "maixcode@4"
         }
       ]
     },
@@ -412,10 +472,20 @@
             "/var/log/**",
             "/^core\\.\\d+$/"
           ],
-          "description": "Hide matching names/paths from SFTP Explorer listings. Each entry is a glob (* ? **) or a JS regex literal like /pattern/flags. Matched against basename and full remote path.",
+          "description": "Hide matching names/paths from SFTP Explorer. Glob (* ? **) or /regex/flags. Right-click a folder/file → Filter (Hide in SFTP) adds its full path. Use Toggle Show Filtered SFTP Items to reveal badges on filtered entries.",
           "items": {
             "type": "string"
           }
+        },
+        "maixcode.sftpShowFiltered": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, SFTP entries matching hide patterns still appear in Explorer with an \"H\" badge and tooltip (so you can Unfilter). When false, they are fully hidden."
+        },
+        "maixcode.autoOpenSftp": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open device SFTP (maixsftp workspace folder) when a device connects. Uses maixcode.sshCredentials and maixcode.sftpRoot. Quiet mode (no toast / no Explorer focus)."
         }
       }
     }

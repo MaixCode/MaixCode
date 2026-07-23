@@ -21,6 +21,8 @@ export type SftpMount = {
   session: SftpSession;
   filter: CompiledSftpFilter;
   readOnly: boolean;
+  /** When true, filtered entries still appear (for badges / unfilter). */
+  showFiltered: boolean;
 };
 
 /**
@@ -63,13 +65,158 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   /** Refresh hide patterns / readOnly from settings for all mounts */
   reloadFiltersFromConfig(): void {
     const cfg = vscode.workspace.getConfiguration(ConfigSection);
-    const patterns = cfg.get<string[]>(ConfigKeys.sftpHidePatterns, []);
-    const readOnly = cfg.get<boolean>(ConfigKeys.sftpReadOnly, false);
-    const filter = compileSftpHidePatterns(patterns);
+    this.applyFilterState({
+      patterns: cfg.get<string[]>(ConfigKeys.sftpHidePatterns, []) || [],
+      readOnly: cfg.get<boolean>(ConfigKeys.sftpReadOnly, false),
+      showFiltered: cfg.get<boolean>(ConfigKeys.sftpShowFiltered, false),
+    });
+  }
+
+  /**
+   * Apply filter state immediately (without waiting for configuration event)
+   * and force Explorer + decorations consumers to refresh.
+   */
+  applyFilterState(state: {
+    patterns: string[];
+    readOnly?: boolean;
+    showFiltered?: boolean;
+  }): void {
+    const filter = compileSftpHidePatterns(state.patterns);
     for (const m of this.mounts.values()) {
       m.filter = filter;
-      m.readOnly = readOnly;
+      if (typeof state.readOnly === "boolean") {
+        m.readOnly = state.readOnly;
+      }
+      if (typeof state.showFiltered === "boolean") {
+        m.showFiltered = state.showFiltered;
+      }
     }
+    this.notifyExplorerRefresh(true);
+  }
+
+  /**
+   * Force Explorer to re-read directories for all mounts.
+   * @param aggressive also pulse workspace roots and re-fire after a tick
+   *   (VS Code sometimes ignores a single Changed on virtual FS roots).
+   */
+  notifyExplorerRefresh(aggressive = false): void {
+    const events = this.collectRootChangeEvents();
+    if (events.length) {
+      this._emitter.fire(events);
+    }
+    if (aggressive) {
+      // Second pulse: Explorer often caches dir listings until another event.
+      setTimeout(() => {
+        const again = this.collectRootChangeEvents();
+        if (again.length) {
+          this._emitter.fire(again);
+        }
+      }, 30);
+      setTimeout(() => {
+        const again = this.collectRootChangeEvents();
+        if (again.length) {
+          this._emitter.fire(again);
+        }
+      }, 120);
+    }
+  }
+
+  /**
+   * Refresh one path so Explorer re-runs readDirectory/stat.
+   * kind:
+   * - hide: emit Deleted (item vanishes when showFiltered is false)
+   * - show: emit Created (item reappears)
+   * - change / default: emit Changed
+   */
+  refreshUri(
+    uri?: vscode.Uri,
+    kind: "hide" | "show" | "change" = "change"
+  ): void {
+    if (!uri) {
+      this.notifyExplorerRefresh(true);
+      return;
+    }
+    if (uri.scheme !== SftpFileSystemProvider.scheme) {
+      return;
+    }
+    const remote = uriPathToRemote(uri.path);
+    const events: vscode.FileChangeEvent[] = [];
+
+    if (kind === "hide") {
+      events.push({ type: vscode.FileChangeType.Deleted, uri });
+    } else if (kind === "show") {
+      events.push({ type: vscode.FileChangeType.Created, uri });
+    } else {
+      events.push({ type: vscode.FileChangeType.Changed, uri });
+    }
+
+    // All ancestors must re-list so hide/show is visible without collapsing.
+    for (const ancestor of ancestorRemotePaths(remote)) {
+      events.push({
+        type: vscode.FileChangeType.Changed,
+        uri: buildSftpUri(uri.authority, ancestor),
+      });
+    }
+
+    const mount = this.mounts.get(uri.authority);
+    if (mount) {
+      events.push({
+        type: vscode.FileChangeType.Changed,
+        uri: buildSftpUri(mount.authority, mount.remoteRoot),
+      });
+    }
+
+    // Workspace folder root (may differ from remoteRoot path string form)
+    for (const f of vscode.workspace.workspaceFolders ?? []) {
+      if (
+        f.uri.scheme === SftpFileSystemProvider.scheme &&
+        f.uri.authority === uri.authority
+      ) {
+        events.push({ type: vscode.FileChangeType.Changed, uri: f.uri });
+      }
+    }
+
+    this._emitter.fire(events);
+    setTimeout(() => this._emitter.fire(events), 30);
+    setTimeout(() => this._emitter.fire(events), 120);
+  }
+
+  private collectRootChangeEvents(): vscode.FileChangeEvent[] {
+    const events: vscode.FileChangeEvent[] = [];
+    const seen = new Set<string>();
+    const push = (uri: vscode.Uri) => {
+      const k = uri.toString();
+      if (seen.has(k)) {
+        return;
+      }
+      seen.add(k);
+      events.push({ type: vscode.FileChangeType.Changed, uri });
+    };
+
+    for (const m of this.mounts.values()) {
+      push(buildSftpUri(m.authority, m.remoteRoot));
+      push(buildSftpUri(m.authority, "/"));
+    }
+    for (const f of vscode.workspace.workspaceFolders ?? []) {
+      if (f.uri.scheme === SftpFileSystemProvider.scheme) {
+        push(f.uri);
+      }
+    }
+    return events;
+  }
+
+  getFilterMatch(uri: vscode.Uri): string | undefined {
+    const mount = this.mounts.get(uri.authority);
+    if (!mount) {
+      return undefined;
+    }
+    const remotePath = uriPathToRemote(uri.path);
+    const basename = remotePath.split("/").filter(Boolean).pop() || remotePath;
+    return mount.filter.matchPattern(remotePath, basename);
+  }
+
+  remotePathOf(uri: vscode.Uri): string {
+    return uriPathToRemote(uri.path);
   }
 
   watch(
@@ -82,8 +229,13 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
     const { mount, remotePath } = await this.resolve(uri);
     try {
-      const st = await mount.session.stat(remotePath);
-      return statsToFileStat(st, mount.readOnly);
+      const { stats, isLink, linkTarget } =
+        await mount.session.statPreferFollow(remotePath);
+      // Directory|SymbolicLink so Explorer can expand symlink dirs (e.g. /sbin)
+      return statsToFileStat(stats, mount.readOnly, {
+        isSymlink: isLink,
+        linkTarget,
+      });
     } catch (e) {
       throw mapSftpError(e, uri);
     }
@@ -94,7 +246,24 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
   ): Promise<[string, vscode.FileType][]> {
     const { mount, remotePath } = await this.resolve(uri);
     try {
-      const list = await mount.session.readdir(remotePath);
+      // Symlink directories: readdir(link) often fails with SSH_FX_FAILURE
+      // (e.g. /sbin -> /usr/sbin on MaixCAM). Resolve then list target.
+      const listPath = await mount.session.resolveForList(remotePath);
+      let list;
+      try {
+        list = await mount.session.readdir(listPath);
+      } catch (e) {
+        // last resort: if path itself is a symlink file, empty dir view
+        try {
+          const { stats } = await mount.session.statPreferFollow(remotePath);
+          if (stats.isDirectory()) {
+            throw e;
+          }
+          return [];
+        } catch {
+          throw e;
+        }
+      }
       const out: [string, vscode.FileType][] = [];
       for (const ent of list) {
         const name = ent.filename;
@@ -105,24 +274,20 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
           remotePath === "/"
             ? `/${name}`
             : `${remotePath.replace(/\/$/, "")}/${name}`;
-        if (mount.filter.shouldHide(childPath, name)) {
+        if (
+          mount.filter.shouldHide(childPath, name) &&
+          !mount.showFiltered
+        ) {
           continue;
         }
-        const attrs = ent.attrs;
-        // ssh2 Attributes: use mode bits (S_IFMT)
-        const mode = attrs?.mode ?? 0;
-        const ifmt = mode & 0o170000;
-        let type = vscode.FileType.File;
-        if (ifmt === 0o040000) {
-          type = vscode.FileType.Directory;
-        } else if (ifmt === 0o120000) {
-          type = vscode.FileType.SymbolicLink;
-        }
+        const type = await resolveEntryType(mount, childPath, ent);
         out.push([name, type]);
       }
       out.sort((a, b) => {
-        if (a[1] !== b[1]) {
-          return a[1] === vscode.FileType.Directory ? -1 : 1;
+        const aDir = (a[1] & vscode.FileType.Directory) !== 0;
+        const bDir = (b[1] & vscode.FileType.Directory) !== 0;
+        if (aDir !== bDir) {
+          return aDir ? -1 : 1;
         }
         return a[0].localeCompare(b[0]);
       });
@@ -152,10 +317,15 @@ export class SftpFileSystemProvider implements vscode.FileSystemProvider {
     try {
       let exists = false;
       try {
-        await mount.session.stat(remotePath);
+        await mount.session.lstat(remotePath);
         exists = true;
       } catch {
-        exists = false;
+        try {
+          await mount.session.stat(remotePath);
+          exists = true;
+        } catch {
+          exists = false;
+        }
       }
       if (!exists && !options.create) {
         throw vscode.FileSystemError.FileNotFound(uri);
@@ -433,12 +603,45 @@ function parentRemotePath(remotePath: string): string | undefined {
   return remotePath.slice(0, i) || "/";
 }
 
-function statsToFileStat(st: Stats, readOnly: boolean): vscode.FileStat {
+/** `/a/b/c` → [`/a/b`, `/a`, `/`] */
+function ancestorRemotePaths(remotePath: string): string[] {
+  const out: string[] = [];
+  let cur: string | undefined = parentRemotePath(remotePath);
+  while (cur !== undefined) {
+    out.push(cur);
+    if (cur === "/") {
+      break;
+    }
+    cur = parentRemotePath(cur);
+  }
+  return out;
+}
+
+function statsToFileStat(
+  st: Stats,
+  readOnly: boolean,
+  opts?: { isSymlink?: boolean; linkTarget?: string }
+): vscode.FileStat {
   let type = vscode.FileType.File;
   if (st.isDirectory()) {
     type = vscode.FileType.Directory;
+  } else if (st.isFile()) {
+    type = vscode.FileType.File;
   } else if (st.isSymbolicLink()) {
     type = vscode.FileType.SymbolicLink;
+  } else {
+    // mode fallback
+    const mode = st.mode ?? 0;
+    const ifmt = mode & 0o170000;
+    if (ifmt === 0o040000) {
+      type = vscode.FileType.Directory;
+    } else if (ifmt === 0o120000) {
+      type = vscode.FileType.SymbolicLink;
+    }
+  }
+  // Mark as symlink|targetType so Explorer can expand / show link badge
+  if (opts?.isSymlink) {
+    type = type | vscode.FileType.SymbolicLink;
   }
   const ctime = (st.atime || 0) * 1000;
   const mtime = (st.mtime || 0) * 1000;
@@ -449,6 +652,60 @@ function statsToFileStat(st: Stats, readOnly: boolean): vscode.FileStat {
     size: st.size ?? 0,
     permissions: readOnly ? vscode.FilePermission.Readonly : undefined,
   };
+}
+
+/**
+ * Map readdir entry to FileType. Symlinks that point to directories become
+ * Directory|SymbolicLink so the tree can expand them.
+ */
+async function resolveEntryType(
+  mount: SftpMount,
+  childPath: string,
+  ent: { attrs?: { mode?: number } }
+): Promise<vscode.FileType> {
+  const mode = ent.attrs?.mode ?? 0;
+  const ifmt = mode & 0o170000;
+  // plain directory / file from dirent attrs
+  if (ifmt === 0o040000) {
+    return vscode.FileType.Directory;
+  }
+  if (ifmt === 0o100000) {
+    return vscode.FileType.File;
+  }
+  if (ifmt === 0o120000) {
+    // symlink: probe target type (follow) with lstat fallback
+    try {
+      const { stats, isLink } =
+        await mount.session.statPreferFollow(childPath);
+      let base = vscode.FileType.File;
+      if (stats.isDirectory()) {
+        base = vscode.FileType.Directory;
+      } else if (stats.isFile()) {
+        base = vscode.FileType.File;
+      } else if (stats.isSymbolicLink()) {
+        base = vscode.FileType.SymbolicLink;
+      }
+      return isLink ? base | vscode.FileType.SymbolicLink : base;
+    } catch {
+      return vscode.FileType.SymbolicLink;
+    }
+  }
+  // unknown mode: try lstat once
+  try {
+    const { stats, followed } = await mount.session.statPreferFollow(childPath);
+    let type = vscode.FileType.File;
+    if (stats.isDirectory()) {
+      type = vscode.FileType.Directory;
+    } else if (stats.isSymbolicLink()) {
+      type = vscode.FileType.SymbolicLink;
+    }
+    if (!followed && stats.isSymbolicLink()) {
+      type = type | vscode.FileType.SymbolicLink;
+    }
+    return type;
+  } catch {
+    return vscode.FileType.Unknown;
+  }
 }
 
 function mapSftpError(e: unknown, uri: vscode.Uri): Error {
@@ -465,6 +722,11 @@ function mapSftpError(e: unknown, uri: vscode.Uri): Error {
     msg.includes("no such file") ||
     msg.includes("not found")
   ) {
+    return vscode.FileSystemError.FileNotFound(uri);
+  }
+  // ssh2 often surfaces SSH_FX_FAILURE simply as "Failure" for broken links
+  // or unsupported ops; treat as FileNotFound so Explorer stays usable.
+  if (msg === "failure" || code === "4" || code === "SSH_FX_FAILURE") {
     return vscode.FileSystemError.FileNotFound(uri);
   }
   if (

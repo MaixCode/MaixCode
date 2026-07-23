@@ -159,6 +159,69 @@ export function initCommands(context: vscode.ExtensionContext) {
           });
       },
     },
+
+    {
+      name: Commands.sftpFilterPath,
+      func: (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+        const list =
+          uris && uris.length
+            ? uris
+            : uri
+              ? [uri]
+              : vscode.window.activeTextEditor?.document.uri
+                ? [vscode.window.activeTextEditor.document.uri]
+                : [];
+        for (const u of list) {
+          void Instance.instance.sftpService.filterUri(u).catch((e) => {
+            error(`[Command] sftpFilterPath: ${formatUnknown(e)}`, true);
+          });
+        }
+      },
+    },
+    {
+      name: Commands.sftpUnfilterPath,
+      func: (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+        const list =
+          uris && uris.length
+            ? uris
+            : uri
+              ? [uri]
+              : [];
+        for (const u of list) {
+          void Instance.instance.sftpService.unfilterUri(u).catch((e) => {
+            error(`[Command] sftpUnfilterPath: ${formatUnknown(e)}`, true);
+          });
+        }
+      },
+    },
+    {
+      name: Commands.sftpToggleShowFiltered,
+      func: () => {
+        void Instance.instance.sftpService.toggleShowFiltered().catch((e) => {
+          error(`[Command] sftpToggleShowFiltered: ${formatUnknown(e)}`, true);
+        });
+      },
+    },
+    {
+      name: Commands.sftpEditFilterPatterns,
+      func: () => {
+        void Instance.instance.sftpService.editFilterPatterns();
+      },
+    },
+    {
+      name: Commands.sftpRefresh,
+      func: (uri?: vscode.Uri) => {
+        const target =
+          uri ??
+          vscode.window.activeTextEditor?.document.uri;
+        if (target?.scheme === "maixsftp") {
+          Instance.instance.sftpService.refresh(target);
+        } else {
+          Instance.instance.sftpService.refresh();
+        }
+      },
+    },
+
     {
       name: Commands.runOnDevice,
       func: async () => {
