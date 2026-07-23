@@ -46,7 +46,7 @@ MaixCode is a VS Code extension for MaixCAM / MaixPy development, providing devi
 
 ### Image Preview
 
-1. Secondary Sidebar → **MaixCode** → **Image**, or `MaixCode: Open Image Viewer`
+1. Device sidebar **Current Device Info** → **Open Image Viewer**, or Secondary Sidebar → **MaixCode** → **Image**, or `MaixCode: Open Image Viewer`
 2. Select a connected device, click **Start** (auto-starts by default)
 3. Toolbar: switch HTTP / WS / MJPEG, start/stop, screenshot
 4. Enable **Hist** for color histogram; switch color space via dropdown

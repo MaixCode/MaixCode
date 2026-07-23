@@ -108,6 +108,12 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
         const name = device.device?.name || "";
         return [
           new DeviceActionItem(
+            vscode.l10n.t("Install Runtime"),
+            Commands.installRuntime,
+            "cloud-download",
+            "maixcode-deviceInstallRuntime"
+          ),
+          new DeviceActionItem(
             vscode.l10n.t("Run Current File"),
             Commands.runOnDevice,
             "play",
@@ -118,6 +124,12 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
             Commands.runProject,
             "run-all",
             "maixcode-deviceRunProject"
+          ),
+          new DeviceActionItem(
+            vscode.l10n.t("Configure Project"),
+            Commands.configureProject,
+            "settings-gear",
+            "maixcode-deviceConfigureProject"
           ),
           new DeviceActionItem(
             vscode.l10n.t("Package App"),
@@ -132,16 +144,10 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
             "maixcode-deviceInstallApp"
           ),
           new DeviceActionItem(
-            vscode.l10n.t("Configure Project"),
-            Commands.configureProject,
-            "settings-gear",
-            "maixcode-deviceConfigureProject"
-          ),
-          new DeviceActionItem(
-            vscode.l10n.t("Install Runtime"),
-            Commands.installRuntime,
-            "cloud-download",
-            "maixcode-deviceInstallRuntime"
+            vscode.l10n.t("Open Image Viewer"),
+            Commands.openImageViewer,
+            "device-camera",
+            "maixcode-deviceOpenImageViewer"
           ),
           new DeviceOpenTerminalItem(ip, name),
           new DeviceOpenSftpItem(ip, name),

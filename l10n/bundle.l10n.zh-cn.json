@@ -39,6 +39,7 @@
   "Current Device Info": "当前设备信息",
   "Manual Connect": "手动连接",
   "Connect": "连接",
+  "Open Image Viewer": "打开图像预览",
   "Open SSH Terminal": "打开 SSH 终端",
   "Open Device Files (SFTP)": "打开设备文件 (SFTP)",
   "Disconnect": "断开连接",
