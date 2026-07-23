@@ -30,15 +30,16 @@
   let httpAbort = null;
   let reconnectTimer = null;
   let objectUrl = null;
-  let revokingUrl = null;
   let pendingWsMeta = null;
   let frameCount = 0;
   let lastFPSUpdate = performance.now();
   let droppedHint = 0;
   let lastPaint = 0;
   let metaThrottle = 0;
-  let latestBlob = null;
-  let paintScheduled = false;
+  let pendingBlob = null;
+  let pendingMeta = null;
+  let pendingSize = null;
+  let painting = false;
 
   function log(message, type) {
     if (!logContainer) {
@@ -60,40 +61,57 @@
     connectionStatus.className = 'status ' + (type || 'idle');
   }
 
-  /** Paint ASAP; revoke previous URL after decode to avoid flash + free memory. */
-  function paintBlob(blob) {
-    latestBlob = blob;
-    if (paintScheduled) {
+  /** One decode at a time; keep only the newest pending blob. */
+  function paintBlob(blob, meta, size) {
+    pendingBlob = blob;
+    pendingMeta = meta;
+    pendingSize = size;
+    if (painting) {
       return;
     }
-    paintScheduled = true;
-    requestAnimationFrame(function () {
-      paintScheduled = false;
-      const b = latestBlob;
-      latestBlob = null;
-      if (!b || !isStreaming) {
-        return;
+    painting = true;
+    const b = pendingBlob;
+    const m = pendingMeta;
+    const s = pendingSize;
+    pendingBlob = null;
+    pendingMeta = null;
+    pendingSize = null;
+    if (!b || !isStreaming) {
+      painting = false;
+      return;
+    }
+    const next = URL.createObjectURL(b);
+    const prev = objectUrl;
+    objectUrl = next;
+    const onDone = function () {
+      streamImage.removeEventListener('load', onDone);
+      streamImage.removeEventListener('error', onDone);
+      if (prev && prev !== objectUrl) {
+        URL.revokeObjectURL(prev);
       }
-      const next = URL.createObjectURL(b);
-      const prev = objectUrl;
-      objectUrl = next;
-      // Decode then swap: keep prev until load so browser can present without blank
-      const onDone = function () {
-        streamImage.removeEventListener('load', onDone);
-        streamImage.removeEventListener('error', onDone);
-        if (prev && prev !== objectUrl) {
-          URL.revokeObjectURL(prev);
-        }
-        if (revokingUrl && revokingUrl !== objectUrl && revokingUrl !== prev) {
-          URL.revokeObjectURL(revokingUrl);
-          revokingUrl = null;
-        }
-      };
-      streamImage.addEventListener('load', onDone);
-      streamImage.addEventListener('error', onDone);
-      streamImage.src = next;
       lastPaint = performance.now();
-    });
+      if (m || s != null) {
+        applyMeta(m, s);
+      }
+      painting = false;
+      if (pendingBlob && isStreaming) {
+        paintBlob(pendingBlob, pendingMeta, pendingSize);
+      }
+    };
+    streamImage.addEventListener('load', onDone);
+    streamImage.addEventListener('error', onDone);
+    streamImage.src = next;
+  }
+
+  function revokeObjectUrl() {
+    if (objectUrl) {
+      try {
+        URL.revokeObjectURL(objectUrl);
+      } catch (e) {
+        /* ignore */
+      }
+      objectUrl = null;
+    }
   }
 
   function resetMetrics() {
@@ -199,10 +217,12 @@
     clearTimers();
     closeWs();
     abortHttp();
-    latestBlob = null;
-    if (currentMode === 'mjpeg') {
-      streamImage.removeAttribute('src');
-    }
+    pendingBlob = null;
+    pendingMeta = null;
+    pendingSize = null;
+    painting = false;
+    streamImage.removeAttribute('src');
+    revokeObjectUrl();
     startBtn.disabled = !currentDevice;
     stopBtn.disabled = true;
     screenshotBtn.disabled = true;
@@ -289,8 +309,7 @@
       } else {
         const blob = await response.blob();
         if (blob.size > 0) {
-          paintBlob(blob);
-          applyMeta(headersToMeta(response), blob.size);
+          paintBlob(blob, headersToMeta(response), blob.size);
           updateStatus('Live', 'connected');
         }
       }
@@ -364,9 +383,8 @@
           return;
         }
         const blob = event.data;
-        // Drop intermediate frames: only keep newest blob for rAF
-        paintBlob(blob);
-        applyMeta(pendingWsMeta, blob.size || droppedHint);
+        // Drop intermediate frames: only keep newest blob for paint
+        paintBlob(blob, pendingWsMeta, blob.size || droppedHint);
         pendingWsMeta = null;
         updateStatus('Live', 'connected');
       };

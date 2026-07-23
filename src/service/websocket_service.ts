@@ -123,7 +123,15 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
       warn("WebSocket is not connected");
       return;
     }
-    debug(`Send message: cmd: ${cmd}, data: ${data}`);
+    debug(
+      `Send message: cmd: ${cmd}, data: ${
+        typeof data === "string"
+          ? `str:${data.length}`
+          : Buffer.isBuffer(data)
+            ? `buf:${data.length}`
+            : data
+      }`
+    );
     this.ws.send(WebSocketService.packMessage(cmd, data));
     this.heartbeat();
   }
@@ -193,7 +201,8 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
   }
 
   private handleCommand(cmd: number, content: Uint8Array) {
-    debug(`Receive message: cmd: ${cmd}, content: ${content}`);
+    // content is often a full JPEG; do not interpolate the bytes into a log line.
+    debug(`Receive message: cmd: ${cmd}, contentLen: ${content.byteLength}`);
     this.emit("message", { cmd, content });
     let table: { [key: number]: (content: Uint8Array) => void } = {
       [COMMAND.AuthAck]: this.authAckCommand,

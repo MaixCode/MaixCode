@@ -61,17 +61,17 @@ Webpack: single Node target bundle `src/extension.ts` → `dist/extension.js`; `
 - **Images**: device frames → `FrameStore` (`frame_store.ts`) via `FrameSink.setImage`; key = device **name** (fallback ip), same as `DeviceService` `onFrame`.
 - **ImageService** (`image_service.ts`): local HTTP on `127.0.0.1` (port `maixcode.imageServicePort`, default 9090, fallback ephemeral). Shared store + three transports:
   - HTTP pull: `GET/HEAD /image/:key` (ETag/304, `X-Frame-*` / `X-Image-*` headers; CORS expose)
-  - WebSocket: JSON control `subscribe`/`pull`/`ping` + binary frame after `op:frame` meta; push per subscribed key; legacy plain-key message = subscribe pull once
-  - MJPEG: `GET /stream/:key` multipart; wait for first frame; backpressure skip
+  - WebSocket: JSON control `subscribe`/`pull`/`ping` + binary frame after `op:frame` meta; push per subscribed key; legacy plain-key message = subscribe pull once. Push skips if `bufferedAmount` high (FrameStore keeps latest).
+  - MJPEG: `GET /stream/:key` multipart; wait for first frame; backpressure skip (`writableNeedDrain` / socket buffer)
   - Also `GET /keys`, `GET /`. No product HTML under `/view`.
-- **ImageViewer** (`ui/provider/image_viewer.ts` + `media/image_viewer/*`): webview panel; no `Instance` import; deps inject listConnected + imageService. Modes HTTP / WebSocket / MJPEG. Config: `imageViewerDefaultMode`, `imageHttpIntervalMs`, `imageViewerAutoStart`. Screenshot via Save dialog (canvas dataUrl or store buffer).
+- **ImageViewer** (`ui/provider/image_viewer.ts` + `media/image_viewer/*`): webview panel; no `Instance` import; deps inject listConnected + imageService. Modes HTTP / WebSocket / MJPEG. Config: `imageViewerDefaultMode`, `imageHttpIntervalMs`, `imageViewerAutoStart`. Screenshot via Save dialog (canvas dataUrl or store buffer). Client paint is latest-only (one decode + one pending blob).
 - **Debug type** `maixpy`: registered as **inline** `DebugAdapterDescriptorFactory` in `debugger/debugger.ts`. Do **not** reintroduce stale `contributes.debuggers.program` / `"runtime": "python"` — the adapter is TypeScript, not an external Python program.
 - **F5 / debug configs**: `DebugConfigurationProvider` (Initial + Dynamic + default) in `extension.ts` provides **Run Current File** and **Run Project**; empty config (F5 without launch.json) shows QuickPick. Launch fields: `mode: file|project`, `projectDir`, optional `projectZip`. Status bar: device status + **Run File** (`maixcode.runOnDevice`) + **Run Project** (`maixcode.runProject`) items (`ui/statusbar.ts`).
 - **Run / debug source resolve**: `debugger/source_resolve.ts` maps active editor (including `example://` and untitled) to content/path for launch. Prefer this over assuming `document.uri.fsPath` always works.
 - **Stop / busy**: stop should end the debug session (`TerminatedEvent` path). Re-run while code is already running should stop-then-retry rather than silently fail.
 - **Commands**: IDs in `Commands` namespace; tree `contextValue`s gate menus (`maixcode-deviceIp`, `exampleSource`, `file`, …).
 - **Config**: `maixcode.enableDeviceDiscovery`, `maixcode.autoConnect` (default true), `maixcode.autoConnectTarget` (hostname/IP or empty → last-connected then first), `maixcode.autoOpenSftp` (default true; quiet SFTP mount on device connect via `SftpService.tryAutoOpenFromConnected`). Discovery honors the discovery setting; auto-connect from `onDeviceChanged`.
-- **Logging**: output channel via `logger.ts` (`initLogger` in activate).
+- **Logging**: output channel via `logger.ts` (`initLogger` in activate). `debug()` always `console.log`s; never interpolate raw image/binary `Uint8Array` into debug strings (see `websocket_service` receive path — used to stringify every Img frame and grow host latency over time).
 
 ## Examples
 

@@ -10,7 +10,8 @@ import { ConfigKeys, ConfigSection } from "../constants";
 const EXPOSE_HEADERS =
   "X-Frame-Timestamp, X-Image-Width, X-Image-Height, X-Image-ColorSpace, X-Image-Format, ETag";
 
-const WS_BUFFERED_LIMIT = 2 * 1024 * 1024;
+/** Drop push/MJPEG writes while the socket still holds data (latest frame wins on next tick). */
+const SOCKET_BUSY_LIMIT = 64 * 1024;
 
 interface WsClientState {
   key?: string;
@@ -386,9 +387,12 @@ export class ImageService implements FrameSink {
         clients.delete(res);
         continue;
       }
-      // backpressure: skip if socket buffer is large
+      // backpressure: skip if previous write has not drained
+      if (res.writableNeedDrain) {
+        continue;
+      }
       const sock = res.socket;
-      if (sock && sock.writableLength > WS_BUFFERED_LIMIT) {
+      if (sock && sock.writableLength > SOCKET_BUSY_LIMIT) {
         continue;
       }
       if (!this.sendMjpegPart(res, frame)) {
@@ -507,7 +511,8 @@ export class ImageService implements FrameSink {
       if (ws.readyState !== WebSocket.OPEN) {
         continue;
       }
-      if (ws.bufferedAmount > WS_BUFFERED_LIMIT) {
+      // Skip if previous frame still in the send buffer; FrameStore keeps latest.
+      if (ws.bufferedAmount > SOCKET_BUSY_LIMIT) {
         continue;
       }
       this.sendWsFrame(ws, frame);
