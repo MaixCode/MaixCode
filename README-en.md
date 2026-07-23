@@ -55,7 +55,7 @@ MaixCode is a VS Code extension for MaixCAM / MaixPy development, providing devi
 ### SSH Terminal
 
 - Click the terminal icon next to device IP, or `MaixCode: Open SSH Terminal`
-- Credentials via `maixcode.sshCredentials`, tried in order (default `root / root`)
+- Credentials via `maixcode.sshCredentials`, tried in order (default `root` / `root` or `root` / `sipeed`)
 
 ### SFTP File Management
 
@@ -121,7 +121,7 @@ Project mode:
 | `maixcode.imageViewerAutoStart` | `true` | Auto-start stream on device connect |
 | `maixcode.sshPort` | `22` | SSH port |
 | `maixcode.sshConnectTimeoutMs` | `10000` | SSH connect timeout |
-| `maixcode.sshCredentials` | `root/root` | SSH credentials list (tried in order) |
+| `maixcode.sshCredentials` | `root`/`root`, `root`/`sipeed` | SSH credentials list (tried in order) |
 | `maixcode.autoOpenSftp` | `true` | Auto-open SFTP on connect |
 | `maixcode.sftpReadOnly` | `false` | SFTP read-only mode |
 | `maixcode.sftpHidePatterns` | — | Hide matching SFTP entries |
