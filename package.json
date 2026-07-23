@@ -639,6 +639,10 @@
             {
               "username": "root",
               "password": "root"
+            },
+            {
+              "username": "root",
+              "password": "sipeed"
             }
           ],
           "description": "%maixcode.config.sshCredentials%",
