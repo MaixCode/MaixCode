@@ -68,7 +68,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
         vscode.Uri.joinPath(this.context.extensionUri, "media", "image_viewer"),
       ],
     };
-    webviewView.webview.html = this.getHtml(webviewView.webview, "view");
+    webviewView.webview.html = this.getHtml(webviewView.webview);
     const sub = webviewView.webview.onDidReceiveMessage((message) => {
       void this.onMessage(message, webviewView.webview);
     });
@@ -120,7 +120,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
         void this.onMessage(message, this.imagePanel!.webview);
       });
 
-      this.imagePanel.webview.html = this.getHtml(this.imagePanel.webview, "panel");
+      this.imagePanel.webview.html = this.getHtml(this.imagePanel.webview);
       this.startDeviceUpdates();
     } else {
       this.imagePanel.reveal(vscode.ViewColumn.Beside);
@@ -240,12 +240,6 @@ export class ImageViewer implements vscode.WebviewViewProvider {
       case "screenshotData":
         await this.saveScreenshotDataUrl(message.key, message.dataUrl);
         break;
-      case "openSidebar":
-        await this.showSidebar();
-        break;
-      case "openPanel":
-        await this.showWindow();
-        break;
       default:
         break;
     }
@@ -302,10 +296,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     vscode.window.showInformationMessage(`Saved screenshot to ${uri.fsPath}`);
   }
 
-  private getHtml(
-    webview: vscode.Webview,
-    surface: "panel" | "view"
-  ): string {
+  private getHtml(webview: vscode.Webview): string {
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(
         this.context.extensionUri,
@@ -352,13 +343,16 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     <button type="button" class="btn primary" id="startBtn" disabled>Start</button>
     <button type="button" class="btn" id="stopBtn" disabled>Stop</button>
     <button type="button" class="btn" id="screenshotBtn" disabled title="Screenshot">Shot</button>
-    ${
-      surface === "panel"
-        ? `<button type="button" class="btn" id="openSidebarBtn" title="Open in secondary sidebar">Sidebar</button>`
-        : `<button type="button" class="btn" id="openPanelBtn" title="Open in editor panel">Editor</button>`
-    }
     <input type="number" id="intervalInput" value="33" min="16" max="2000" step="1" title="HTTP poll interval (ms)" />
     <label class="chk" title="Show overlay"><input type="checkbox" id="overlayToggle" checked /> HUD</label>
+    <label class="chk" title="Color histogram"><input type="checkbox" id="histogramToggle" /> Hist</label>
+    <select id="histSpace" title="Histogram color space" disabled>
+      <option value="rgb" selected>RGB</option>
+      <option value="gray">GRAY</option>
+      <option value="lab">LAB</option>
+      <option value="yuv">YUV</option>
+      <option value="hsv">HSV</option>
+    </select>
     <label class="chk" title="Auto reconnect"><input type="checkbox" id="autoReconnect" checked /> Auto</label>
     <div class="status idle" id="connectionStatus">Idle</div>
     <div class="metrics-inline" title="FPS · KB · resolution · latency">
@@ -373,6 +367,14 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     <div class="overlay" id="imageOverlay" style="display:none;">
       <div id="overlayInfo"></div>
     </div>
+  </div>
+  <div class="hist-dock" id="histPanel" hidden>
+    <div class="hist-dock-head">
+      <span class="hist-dock-title">Histogram</span>
+      <span class="hist-dock-meta" id="histMeta">-</span>
+    </div>
+    <div class="hist-charts" id="histCharts"></div>
+    <div class="hist-tooltip" id="histTooltip" hidden></div>
   </div>
   <div class="footer">
     <div class="log-section" id="logContainer"></div>

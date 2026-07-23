@@ -35,6 +35,7 @@ MaixCode 是一个用于 MaixCAM 设备开发的 VSCode 扩展，让您能够方
 1. 打开 VS Code 右侧栏（Secondary Side Bar），选择 **MaixCode → Image**；或命令面板运行 "MaixCode: Open Image Viewer"
 2. 在预览中选择已连接的设备，点击 Start（默认可自动开始）
 3. 需要更大画面时，可用 "MaixCode: Open Image Viewer in Editor" 在编辑器旁打开面板
+4. 勾选 **Hist** 在画面下方显示色彩直方图（每通道独立图，悬停查看详细数值），下拉选择 RGB / GRAY / LAB / YUV / HSV
 
 ### 运行代码
 
