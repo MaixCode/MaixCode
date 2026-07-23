@@ -7,6 +7,7 @@ VS Code extension for MaixCAM / MaixPy (discover devices, connect, run/debug cod
 - Use **pnpm** (`pnpm-lock.yaml`, `pnpm-workspace.yaml`). Yarn lock/config are being removed.
 - `package.json` scripts may still say `yarn run ...` in `pretest` / `vscode:prepublish`; prefer `pnpm run <script>` when invoking by hand.
 - Native deps: `sharp` (and `canvas` via transitive) need builds; `pnpm-workspace.yaml` sets `allowBuilds` for both. Fresh install may compile natives.
+- `pnpm-workspace.yaml` must include `packages: ['.']` (single-package workspace) so `pnpm store path` / Actions `cache: pnpm` work; file also holds `allowBuilds` only otherwise breaks with `packages field missing or empty`.
 
 ```bash
 pnpm install
@@ -18,12 +19,13 @@ pnpm run compile-tests    # tsc -> out/ (tests only; extension itself is webpack
 pnpm run test             # pretest = compile-tests + compile + lint, then vscode-test
 ```
 
-There is no monorepo of packages; workspace file only configures pnpm build allowances.
+Single-package workspace (`packages: ['.']`); not a multi-package monorepo. Workspace file also configures native `allowBuilds`.
 
 ## CI (GitHub Actions)
 
 - Workflow: `.github/workflows/build-vsix.yml` (`Build VSIX`).
 - Triggers: `push` / `pull_request` to `main` or `master`, plus `workflow_dispatch`.
+- Runner: Node **22** + pnpm 9 (`actions/setup-node` `cache: pnpm` needs valid workspace `packages`).
 - Steps: `pnpm install --frozen-lockfile` → `pnpm run lint` → `pnpm run package:vsix` (`vsce package --no-dependencies`; `vscode:prepublish` runs production webpack first).
 - Artifact: uploads `*.vsix` as **`maixcode-vsix`** (retention 30 days). Download from the Actions run summary.
 - Local equivalent: `pnpm run package:vsix` → `maixcode-<version>.vsix` (gitignored).
