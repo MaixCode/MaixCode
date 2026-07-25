@@ -1,5 +1,5 @@
 {
-  "name": "maixcode",
+  "name": "maixcode-plg",
   "displayName": "%maixcode.displayName%",
   "description": "%maixcode.description%",
   "version": "0.0.1",
@@ -14,7 +14,7 @@
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/MaixCode/MaixCode.git"
