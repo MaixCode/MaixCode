@@ -1,4 +1,5 @@
 import { DeviceInfo } from "../model/device";
+import { ImageType } from "../model/image_type";
 
 /**
  * Narrow device control surface for run/debug sessions.
@@ -18,6 +19,8 @@ export interface DeviceTransport {
   installApp?(zipData: Buffer): void;
   /** Optional: install/update MaixVision runtime (UpdateRuntime cmd 19) */
   updateRuntime?(payload: Buffer): void;
+  /** Optional: set live image format (ImgFormat cmd 14). 0=None, 1=JPEG, 2=PNG. */
+  setImageFormat?(format: ImageType): void;
 
   on(event: string, listener: (...args: any[]) => void): this;
   off(event: string, listener: (...args: any[]) => void): this;

@@ -1,4 +1,5 @@
 export enum ImageType {
-  JPEG,
-  PNG,
+  None = 0,
+  JPEG = 1,
+  PNG = 2,
 }

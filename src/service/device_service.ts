@@ -4,6 +4,7 @@ import { info, warn, error } from "../logger";
 import { DeviceAddr } from "../model/device";
 import { Status } from "../model/status";
 import { DeviceTransport } from "../ports/device_transport";
+import { ImageType } from "../model/image_type";
 
 export type FrameHandler = (deviceKey: string, data: ArrayBuffer) => void;
 
@@ -77,6 +78,10 @@ export class DeviceService {
     if (this.wss) {
       return this.wss.deviceInfo;
     }
+  }
+
+  public setImageFormat(format: ImageType) {
+    this.wss?.setImageFormat(format);
   }
 
   public get status() {

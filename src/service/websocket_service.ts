@@ -3,6 +3,7 @@ import ws from "ws";
 import { DeviceInfo } from "../model/device";
 import { EventEmitter } from "events";
 import { DeviceTransport } from "../ports/device_transport";
+import { ImageType } from "../model/image_type";
 
 const HEADER = Uint8Array.of(172, 190, 203, 202);
 const VERSION = Uint8Array.of(0);
@@ -425,6 +426,25 @@ export class WebSocketService extends EventEmitter implements DeviceTransport {
       info("WebSocketService.updateRuntime: UpdateRuntime command sent");
     } catch (e) {
       error(`WebSocketService.updateRuntime failed: ${e}`);
+      this.emit("error", e instanceof Error ? e : { code: -1, msg: String(e) });
+    }
+  }
+
+  /**
+   * Select live image push format. 0=None disables image transfer.
+   */
+  public setImageFormat(format: ImageType) {
+    info(
+      `WebSocketService.setImageFormat ip=${this.ip} connected=${this.isConnected} format=${format}`
+    );
+    if (!this.isConnected) {
+      warn(`WebSocketService.setImageFormat: not connected to ${this.ip}`);
+      return;
+    }
+    try {
+      this.sendMessage(COMMAND.ImgFormat, format);
+    } catch (e) {
+      error(`WebSocketService.setImageFormat failed: ${e}`);
       this.emit("error", e instanceof Error ? e : { code: -1, msg: String(e) });
     }
   }

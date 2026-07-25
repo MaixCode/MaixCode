@@ -99,6 +99,8 @@ export class Instance {
           name: d.device?.name || "Unknown",
           ip: d.device?.ip || "",
         })),
+      setImageFormatForDevice: (deviceKey, format) =>
+        this.deviceManager.setImageFormatForDevice(deviceKey, format),
       onConnectionListChanged: (listener) => {
         this.connectionListeners.add(listener);
         return () => {

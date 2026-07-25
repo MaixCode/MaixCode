@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { log, warn } from "../../logger";
 import { ImageService } from "../../service/image_service";
 import { ConfigKeys, ConfigSection } from "../../constants";
+import { ImageType } from "../../model/image_type";
 
 export interface ImageViewerDevice {
   /** Frame store / HTTP key (device name, matching DeviceService onFrame) */
@@ -13,6 +14,10 @@ export interface ImageViewerDevice {
 export interface ImageViewerDeps {
   imageService: ImageService;
   listConnectedDevices: () => ImageViewerDevice[];
+  setImageFormatForDevice?: (
+    deviceKey: string,
+    format: ImageType
+  ) => boolean;
   /** Optional: called when connection list may have changed — viewer polls via this if set */
   onConnectionListChanged?: (listener: () => void) => () => void;
 }
@@ -22,6 +27,38 @@ interface ViewerSurface {
   webview: vscode.Webview;
   kind: "panel" | "view";
 }
+
+type ImageFormatName = "none" | "jpeg" | "png";
+// Map ImageType enum to ImageFormatName string
+function imageTypeToFormatName(type: ImageType): ImageFormatName {
+  switch (type) {
+    case ImageType.None:
+      return "none";
+    case ImageType.JPEG:
+      return "jpeg";
+    case ImageType.PNG:
+      return "png";
+    default:
+      return "none";
+  }
+}
+
+function formatNameToImageType(format?: string): ImageType {
+  switch (format) {
+    case "none":
+      return ImageType.None;
+    case "png":
+      return ImageType.PNG;
+    default:
+      return ImageType.JPEG;
+  }
+}
+
+type ViewerStreamState = {
+  deviceKey?: string;
+  imageFormat: ImageType;
+  streaming: boolean;
+};
 
 /**
  * Live preview via local ImageService transports (HTTP / WS / MJPEG).
@@ -37,6 +74,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
   private lastDeviceJson = "";
   /** Dedupe auto-open while at least one device stays connected */
   private autoOpenedWhileConnected = false;
+  private readonly viewerStates = new Map<vscode.Webview, ViewerStreamState>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -54,6 +92,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
 
   public dispose(): void {
     this.stopDeviceUpdates();
+    this.viewerStates.clear();
     this.imagePanel?.dispose();
     this.imagePanel = undefined;
     this.imageView = undefined;
@@ -72,6 +111,10 @@ export class ImageViewer implements vscode.WebviewViewProvider {
       ],
     };
     webviewView.webview.html = this.getHtml(webviewView.webview);
+    this.viewerStates.set(webviewView.webview, {
+      imageFormat: ImageType.JPEG,
+      streaming: false,
+    });
     const sub = webviewView.webview.onDidReceiveMessage((message) => {
       void this.onMessage(message, webviewView.webview);
     });
@@ -80,6 +123,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
       if (this.imageView === webviewView) {
         this.imageView = undefined;
       }
+      this.onSurfaceDisposed(webviewView.webview);
       if (!this.hasSurface()) {
         this.stopDeviceUpdates();
       }
@@ -137,6 +181,7 @@ export class ImageViewer implements vscode.WebviewViewProvider {
       );
 
       this.imagePanel.onDidDispose(() => {
+        this.onSurfaceDisposed(this.imagePanel!.webview);
         this.imagePanel = undefined;
         if (!this.hasSurface()) {
           this.stopDeviceUpdates();
@@ -148,6 +193,10 @@ export class ImageViewer implements vscode.WebviewViewProvider {
       });
 
       this.imagePanel.webview.html = this.getHtml(this.imagePanel.webview);
+      this.viewerStates.set(this.imagePanel.webview, {
+        imageFormat: ImageType.JPEG,
+        streaming: false,
+      });
       this.startDeviceUpdates();
     } else {
       this.imagePanel.reveal(vscode.ViewColumn.Beside);
@@ -234,11 +283,75 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     });
   }
 
+  private onSurfaceDisposed(webview: vscode.Webview): void {
+    const prev = this.viewerStates.get(webview);
+    this.viewerStates.delete(webview);
+    if (prev?.streaming && prev.deviceKey) {
+      this.syncImageFormatForDevice(prev.deviceKey);
+    }
+  }
+
+  private desiredFormatForDevice(deviceKey: string): ImageType {
+    let desired = ImageType.None;
+    for (const state of this.viewerStates.values()) {
+      if (!state.streaming || state.deviceKey !== deviceKey) {
+        continue;
+      }
+      if (state.imageFormat === ImageType.PNG) {
+        return ImageType.PNG;
+      }
+      if (state.imageFormat === ImageType.JPEG) {
+        desired = ImageType.JPEG;
+      }
+    }
+    return desired;
+  }
+
+  private syncImageFormatForDevice(deviceKey: string): void {
+    const setImageFormatForDevice = this.deps.setImageFormatForDevice;
+    if (!setImageFormatForDevice) {
+      return;
+    }
+    const desired = this.desiredFormatForDevice(deviceKey);
+    const ok = setImageFormatForDevice(deviceKey, desired);
+    if (!ok) {
+      warn(`[ImageViewer] could not set image format for ${deviceKey}`);
+      return;
+    }
+    log(
+      `[ImageViewer] image format ${imageTypeToFormatName(desired).toUpperCase()} for ${deviceKey}`
+    );
+  }
+
+  private updateViewerStreamState(
+    webview: vscode.Webview,
+    patch: Partial<ViewerStreamState>
+  ): void {
+    const prev = this.viewerStates.get(webview) ?? {
+      imageFormat: ImageType.JPEG,
+      streaming: false,
+    };
+    const next: ViewerStreamState = { ...prev, ...patch };
+    this.viewerStates.set(webview, next);
+    const affected = new Set<string>();
+    if (prev.deviceKey) {
+      affected.add(prev.deviceKey);
+    }
+    if (next.deviceKey) {
+      affected.add(next.deviceKey);
+    }
+    for (const key of affected) {
+      this.syncImageFormatForDevice(key);
+    }
+  }
+
   private async onMessage(
     message: {
       type?: string;
       key?: string;
       mode?: string;
+      format?: string;
+      streaming?: boolean;
       dataUrl?: string;
     },
     webview: vscode.Webview
@@ -248,16 +361,28 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     }
     switch (message.type) {
       case "ready":
+        this.viewerStates.set(webview, {
+          imageFormat: ImageType.JPEG,
+          streaming: false,
+        });
         void this.deps.imageService.whenReady().then(() => {
           this.lastDeviceJson = "";
           this.postInitTo(webview);
         });
         break;
       case "deviceSelected":
+        this.updateViewerStreamState(webview, { deviceKey: message.key });
         log(`Image viewer selected device key=${message.key}`);
         break;
       case "modeChanged":
         log(`Image viewer mode=${message.mode}`);
+        break;
+      case "streamStateChanged":
+        this.updateViewerStreamState(webview, {
+          deviceKey: message.key,
+          imageFormat: formatNameToImageType(message.format),
+          streaming: !!message.streaming,
+        });
         break;
       case "logError":
         warn(`Image viewer: ${String((message as { error?: string }).error)}`);
@@ -368,6 +493,8 @@ export class ImageViewer implements vscode.WebviewViewProvider {
     const tOverlay = this.escapeHtml(vscode.l10n.t("Show overlay"));
     const tHist = this.escapeHtml(vscode.l10n.t("Color histogram"));
     const tHistSpace = this.escapeHtml(vscode.l10n.t("Histogram color space"));
+    const tImageFormat = this.escapeHtml(vscode.l10n.t("Image format"));
+    const tFormatNone = this.escapeHtml(vscode.l10n.t("None"));
     const tAuto = this.escapeHtml(vscode.l10n.t("Auto"));
     const tAutoReconnect = this.escapeHtml(vscode.l10n.t("Auto reconnect"));
     const tIdle = this.escapeHtml(vscode.l10n.t("Idle"));
@@ -425,6 +552,14 @@ export class ImageViewer implements vscode.WebviewViewProvider {
           <button type="button" class="stream-mode" data-mode="mjpeg">MJPEG</button>
         </div>
       </div>
+      <label class="settings-row">
+        <span class="settings-label">${tImageFormat}</span>
+        <select id="imageFormatSelect">
+          <option value="jpeg" selected>JPEG</option>
+          <option value="png">PNG</option>
+          <option value="none">${tFormatNone}</option>
+        </select>
+      </label>
       <label class="settings-row">
         <span class="settings-label">${tInterval}</span>
         <input type="number" id="intervalInput" value="33" min="16" max="2000" step="1" />

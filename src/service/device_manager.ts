@@ -10,6 +10,7 @@ import {
   defaultDeviceName,
   LastConnectedDeviceKey,
 } from "../constants";
+import { ImageType } from "../model/image_type";
 
 const IPREGEX =
   /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -304,6 +305,23 @@ export class DeviceManager {
 
   public getCurrentDevice() {
     return this.currentDevice;
+  }
+
+  public setImageFormatForDevice(deviceKey: string, format: ImageType): boolean {
+    const key = deviceKey.trim();
+    if (!key) {
+      return false;
+    }
+    const target = this.getConnectedDevice().find((device) => {
+      const name = device.device?.name || "";
+      const ip = device.device?.ip || "";
+      return name === key || ip === key;
+    });
+    if (!target) {
+      return false;
+    }
+    target.setImageFormat(format);
+    return true;
   }
 
   public setCurrentDevice(device: DeviceService) {

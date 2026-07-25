@@ -30,6 +30,7 @@
   const ICON_STOP =
     '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3.5 3.5h9v9h-9z"/></svg>';
   const intervalInput = document.getElementById('intervalInput');
+  const imageFormatSelect = document.getElementById('imageFormatSelect');
   const overlayToggle = document.getElementById('overlayToggle');
   const histogramToggle = document.getElementById('histogramToggle');
   const histSpace = document.getElementById('histSpace');
@@ -50,6 +51,7 @@
   let wsUrl = '';
   let currentDevice = null;
   let currentMode = 'websocket';
+  let imageFormat = 'jpeg';
   let isStreaming = false;
   /** True while auto-start / start is in progress (keeps Start/Stop UI consistent). */
   let streamStarting = false;
@@ -580,6 +582,13 @@
         autoReconnect.checked = s.autoReconnect;
       }
       if (
+        (s.imageFormat === 'jpeg' || s.imageFormat === 'png' || s.imageFormat === 'none') &&
+        imageFormatSelect
+      ) {
+        imageFormat = s.imageFormat;
+        imageFormatSelect.value = imageFormat;
+      }
+      if (
         s.mode === 'http' ||
         s.mode === 'websocket' ||
         s.mode === 'mjpeg'
@@ -616,6 +625,7 @@
             : 33,
           autoReconnect: !!(autoReconnect && autoReconnect.checked),
           mode: currentMode,
+          imageFormat: imageFormat,
           hud: !!(overlayToggle && overlayToggle.checked),
           hist: !!(histogramToggle && histogramToggle.checked),
           histSpace: (histSpace && histSpace.value) || 'rgb',
@@ -1541,6 +1551,18 @@
       const hasFrame = !!(streamImage && streamImage.naturalWidth);
       screenshotBtn.disabled = !hasDevice || (!busy && !hasFrame);
     }
+    if (imageFormatSelect) {
+      imageFormatSelect.disabled = !hasDevice;
+    }
+  }
+
+  function postStreamState() {
+    vscode.postMessage({
+      type: 'streamStateChanged',
+      key: currentDevice,
+      format: imageFormat,
+      streaming: isStreaming,
+    });
   }
 
   function toggleStream() {
@@ -1569,6 +1591,7 @@
       updateStatus('Stopped', 'idle');
       log('Stopped');
     }
+    postStreamState();
   }
 
   function scheduleReconnect(fn) {
@@ -1582,9 +1605,10 @@
 
   function startStream() {
     if (!currentDevice || !httpBase) {
-      log('No device / service', 'error');
+      log(currentDevice ? 'Image service is not ready yet' : 'No device selected', 'error');
       streamStarting = false;
       syncStreamButtons();
+      postStreamState();
       return;
     }
     streamStarting = true;
@@ -1593,6 +1617,7 @@
     isStreaming = true;
     streamStarting = false;
     syncStreamButtons();
+    postStreamState();
     resetMetrics();
     updateStatus('Connecting', 'connecting');
     log(currentMode.toUpperCase() + ' → ' + currentDevice);
@@ -1817,6 +1842,22 @@
     }
   }
 
+  function setImageFormat(format) {
+    const next = format === 'png' || format === 'none' ? format : 'jpeg';
+    if (imageFormat === next) {
+      if (imageFormatSelect && imageFormatSelect.value !== next) {
+        imageFormatSelect.value = next;
+      }
+      return;
+    }
+    imageFormat = next;
+    if (imageFormatSelect) {
+      imageFormatSelect.value = next;
+    }
+    saveViewerSettings();
+    postStreamState();
+  }
+
   function onDeviceChange() {
     const key = deviceSelect.value;
     if (!key || key === currentDevice) {
@@ -1826,6 +1867,7 @@
     currentDevice = key;
     updateStatus('Selected', 'idle');
     syncStreamButtons();
+    postStreamState();
     vscode.postMessage({ type: 'deviceSelected', key: key });
   }
 
@@ -1884,6 +1926,7 @@
       stopStream();
       currentDevice = null;
       updateStatus('Disconnected', 'error');
+      postStreamState();
     } else {
       currentDevice = null;
     }
@@ -1996,6 +2039,9 @@
           currentMode = 'websocket';
         }
       }
+      if (imageFormatSelect) {
+        imageFormatSelect.value = imageFormat;
+      }
       streamModes.forEach(function (m) {
         m.classList.toggle('active', m.dataset.mode === currentMode);
       });
@@ -2008,10 +2054,12 @@
       log(httpBase || 'no service');
       ensureHistEnabled();
       syncStreamButtons();
+      postStreamState();
       tryAutoStartStream();
     } else if (message.type === 'updateDeviceList') {
       const hadDevice = !!currentDevice;
       fillDevices(message.devices || []);
+      postStreamState();
       // device connected after webview opened → start stream + hist
       if (preferAutoStart && currentDevice && (!hadDevice || !isStreaming)) {
         tryAutoStartStream();
@@ -2068,6 +2116,11 @@
   if (intervalInput) {
     intervalInput.addEventListener('change', saveViewerSettings);
   }
+  if (imageFormatSelect) {
+    imageFormatSelect.addEventListener('change', function () {
+      setImageFormat(imageFormatSelect.value);
+    });
+  }
   document.addEventListener('click', function (ev) {
     const t = ev.target;
     if (settingsPanel && !settingsPanel.hidden) {
@@ -2086,5 +2139,6 @@
   });
   ensureHistEnabled();
   syncStreamButtons();
+  postStreamState();
   vscode.postMessage({ type: 'ready' });
 })();
