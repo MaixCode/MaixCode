@@ -301,11 +301,60 @@ export class SftpSession {
     return this.withSftp(
       (sftp) =>
         new Promise((resolve, reject) => {
-          const chunks: Buffer[] = [];
-          const stream = sftp.createReadStream(remotePath);
-          stream.on("data", (c: Buffer) => chunks.push(c));
-          stream.on("error", reject);
-          stream.on("end", () => resolve(Buffer.concat(chunks)));
+          sftp.open(remotePath, "r", (openErr, handle) => {
+            if (openErr) {
+              reject(openErr);
+              return;
+            }
+            if (!handle) {
+              reject(new Error(`Failed to open remote file: ${remotePath}`));
+              return;
+            }
+
+            const chunks: Buffer[] = [];
+            const chunkSize = 64 * 1024;
+            let position = 0;
+
+            const closeAndFinish = (err?: Error) => {
+              sftp.close(handle, (closeErr) => {
+                if (err) {
+                  reject(err);
+                  return;
+                }
+                if (closeErr) {
+                  reject(closeErr);
+                  return;
+                }
+                resolve(Buffer.concat(chunks));
+              });
+            };
+
+            const readNext = () => {
+              const buffer = Buffer.allocUnsafe(chunkSize);
+              sftp.read(
+                handle,
+                buffer,
+                0,
+                chunkSize,
+                position,
+                (readErr, bytesRead) => {
+                  if (readErr) {
+                    closeAndFinish(readErr);
+                    return;
+                  }
+                  if (!bytesRead) {
+                    closeAndFinish();
+                    return;
+                  }
+                  chunks.push(buffer.subarray(0, bytesRead));
+                  position += bytesRead;
+                  readNext();
+                }
+              );
+            };
+
+            readNext();
+          });
         })
     );
   }
