@@ -545,7 +545,7 @@
         "maixcode.imageHttpIntervalMs": {
           "type": "number",
           "default": 33,
-          "minimum": 16,
+          "minimum": 0,
           "maximum": 2000,
           "description": "%maixcode.config.imageHttpIntervalMs%"
         },
@@ -710,7 +710,7 @@
         },
         "maixcode.autoOpenSftp": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "%maixcode.config.autoOpenSftp%"
         },
         "maixcode.sftpBookmarks": {
