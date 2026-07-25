@@ -1,0 +1,159 @@
+name: Release
+
+# Tag push (v*): publish ONLY when package.json version equals the tag (no v prefix).
+# On mismatch: open a version-bump PR and do not package or create a GitHub Release.
+# After that PR merges, release-on-merge verifies again, moves the tag to the merge
+# commit, and publishes (GITHUB_TOKEN tag moves do not re-trigger this workflow).
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Check tag matches package.json
+        id: version_check
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          if ! echo "${TAG_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$'; then
+            echo "Invalid tag version (expected vX.Y.Z): v${TAG_VERSION}" >&2
+            exit 1
+          fi
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "tag_version=${TAG_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "package_version=${PACKAGE_VERSION}" >> "${GITHUB_OUTPUT}"
+          if [ "${TAG_VERSION}" = "${PACKAGE_VERSION}" ]; then
+            echo "match=true" >> "${GITHUB_OUTPUT}"
+            echo "Version match: package.json=${PACKAGE_VERSION}, tag=v${TAG_VERSION}"
+          else
+            echo "match=false" >> "${GITHUB_OUTPUT}"
+            echo "Version mismatch: package.json=${PACKAGE_VERSION}, tag=v${TAG_VERSION}"
+            echo "Release blocked until package.json matches the tag."
+          fi
+
+      - name: Create version bump PR
+        if: steps.version_check.outputs.match == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_VERSION: ${{ steps.version_check.outputs.tag_version }}
+          PACKAGE_VERSION: ${{ steps.version_check.outputs.package_version }}
+        run: |
+          set -euo pipefail
+          BRANCH="version-bump/v${TAG_VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main master 2>/dev/null || true
+          DEFAULT_BASE="main"
+          if git rev-parse --verify origin/master >/dev/null 2>&1 && ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+            DEFAULT_BASE="master"
+          fi
+
+          git checkout -B "${BRANCH}" "origin/${DEFAULT_BASE}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = process.env.TAG_VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          git add package.json
+          if git diff --cached --quiet; then
+            echo "package.json already at ${TAG_VERSION} on ${BRANCH}"
+          else
+            git commit -m "chore: bump version to ${TAG_VERSION}"
+          fi
+          git push -u origin "${BRANCH}" --force-with-lease
+
+          gh label create version-bump \
+            --description "Automated package.json version bump for release" \
+            --color "0E8A16" 2>/dev/null || true
+
+          EXISTING=$(gh pr list --head "${BRANCH}" --base "${DEFAULT_BASE}" --state open --json number --jq '.[0].number // empty')
+          if [ -n "${EXISTING}" ]; then
+            echo "PR #${EXISTING} already open for ${BRANCH}"
+            gh pr edit "${EXISTING}" --add-label version-bump 2>/dev/null || true
+          else
+            gh pr create \
+              --base "${DEFAULT_BASE}" \
+              --head "${BRANCH}" \
+              --title "chore: bump version to ${TAG_VERSION}" \
+              --label version-bump \
+              --body "$(cat <<BODY
+## Version bump for \`v${TAG_VERSION}\`
+
+Tag \`v${TAG_VERSION}\` was pushed, but \`package.json\` is still \`${PACKAGE_VERSION}\`.
+
+**Release is blocked** until \`package.json.version === ${TAG_VERSION}\`.
+
+### After merge
+Workflow **Release on Version Bump Merge** will:
+1. Re-check that the merge commit has \`package.json\` version \`${TAG_VERSION}\`
+2. Move tag \`v${TAG_VERSION}\` to that merge commit
+3. Build the VSIX and create the GitHub Release (notes from git history)
+
+Do not change the version in this PR to anything other than \`${TAG_VERSION}\`.
+BODY
+)"
+          fi
+
+      - name: Install dependencies
+        if: steps.version_check.outputs.match == 'true'
+        run: yarn install --frozen-lockfile
+
+      - name: Lint
+        if: steps.version_check.outputs.match == 'true'
+        run: yarn run lint
+
+      - name: Package VSIX
+        if: steps.version_check.outputs.match == 'true'
+        run: yarn run package:vsix
+
+      - name: Resolve VSIX path
+        if: steps.version_check.outputs.match == 'true'
+        id: vsix
+        run: |
+          set -euo pipefail
+          VSIX=$(ls -1 *.vsix | head -n 1)
+          if [ -z "${VSIX}" ]; then
+            echo "No .vsix produced" >&2
+            exit 1
+          fi
+          TAG_VERSION="${{ steps.version_check.outputs.tag_version }}"
+          if ! echo "${VSIX}" | grep -Fq "${TAG_VERSION}"; then
+            echo "VSIX filename does not contain version ${TAG_VERSION}: ${VSIX}" >&2
+            exit 1
+          fi
+          echo "name=${VSIX}" >> "${GITHUB_OUTPUT}"
+          echo "Packed: ${VSIX} ($(du -h "${VSIX}" | cut -f1))"
+
+      - name: Create GitHub Release
+        if: steps.version_check.outputs.match == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.vsix.outputs.name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true

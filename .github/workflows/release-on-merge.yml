@@ -1,0 +1,125 @@
+name: Release on Version Bump Merge
+
+# After a version-bump PR merges: require package.json == intended version,
+# move tag vX.Y.Z to the merge commit, then package VSIX + GitHub Release.
+# (GITHUB_TOKEN cannot re-trigger the tag-push Release workflow, so publish here.)
+on:
+  pull_request:
+    types: [closed]
+    branches: [main, master]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Retag and release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: |
+      github.event.pull_request.merged == true &&
+      (
+        startsWith(github.event.pull_request.head.ref, 'version-bump/v') ||
+        contains(github.event.pull_request.labels.*.name, 'version-bump')
+      )
+
+    steps:
+      - name: Checkout merge commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Extract and verify version
+        id: version
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+          if [[ "${BRANCH_NAME}" == version-bump/v* ]]; then
+            VERSION="${BRANCH_NAME#version-bump/v}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          if [ -z "${VERSION}" ]; then
+            echo "Could not determine release version from branch ${BRANCH_NAME}" >&2
+            exit 1
+          fi
+          if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$'; then
+            echo "Invalid version: ${VERSION}" >&2
+            exit 1
+          fi
+
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "Target version: ${VERSION}"
+          echo "package.json on merge commit: ${PACKAGE_VERSION}"
+
+          if [ "${PACKAGE_VERSION}" != "${VERSION}" ]; then
+            echo "::error::package.json (${PACKAGE_VERSION}) != ${VERSION}. Refusing to retag or release."
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Verified: package.json matches v${VERSION}"
+
+      - name: Move tag to merge commit
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          MERGE_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          echo "Moving tag ${TAG} -> ${MERGE_COMMIT}"
+          git tag -f "${TAG}" "${MERGE_COMMIT}"
+          git push origin "refs/tags/${TAG}" --force
+
+          git checkout -q "${TAG}"
+          CHECK=$(node -p "require('./package.json').version")
+          if [ "${CHECK}" != "${VERSION}" ]; then
+            echo "::error::After retag, package.json is ${CHECK}, expected ${VERSION}" >&2
+            exit 1
+          fi
+          echo "Tag ${TAG} at ${MERGE_COMMIT}, package.json=${CHECK}"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Lint
+        run: yarn run lint
+
+      - name: Package VSIX
+        run: yarn run package:vsix
+
+      - name: Resolve VSIX path
+        id: vsix
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          VSIX=$(ls -1 *.vsix | head -n 1)
+          if [ -z "${VSIX}" ]; then
+            echo "No .vsix produced" >&2
+            exit 1
+          fi
+          if ! echo "${VSIX}" | grep -Fq "${VERSION}"; then
+            echo "VSIX filename does not contain version ${VERSION}: ${VSIX}" >&2
+            exit 1
+          fi
+          echo "name=${VSIX}" >> "${GITHUB_OUTPUT}"
+          echo "Packed: ${VSIX} ($(du -h "${VSIX}" | cut -f1))"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.event.pull_request.merge_commit_sha }}
+          files: ${{ steps.vsix.outputs.name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true

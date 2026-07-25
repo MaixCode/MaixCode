@@ -19,13 +19,28 @@ yarn run test             # pretest = compile-tests + compile + lint, then vscod
 
 ## CI (GitHub Actions)
 
+### Build VSIX
+
 - Workflow: `.github/workflows/build-vsix.yml` (`Build VSIX`).
 - Triggers: `push` / `pull_request` to `main` or `master`, plus `workflow_dispatch`.
 - Runner: Node **22** + Yarn classic (`actions/setup-node` `cache: yarn` from `yarn.lock`).
-- Steps: `yarn install --frozen-lockfile` → `yarn run lint` → `yarn run package:vsix` (`vsce package --yarn --dependencies --packagedDependencies @cweijan/ssh2`; `vscode:prepublish` runs production webpack first).
+- Steps: `yarn install --frozen-lockfile` → `yarn run lint` → `yarn run package:vsix` (`vsce package --yarn --dependencies`; `vscode:prepublish` runs production webpack first).
 - Artifact: uploads `*.vsix` as **`maixcode-vsix`** (retention 30 days). Download from the Actions run summary.
 - Local equivalent: `yarn run package:vsix` → `maixcode-<version>.vsix` (gitignored).
-- Package size: pure JS deps are webpack-bundled; vsce ships only `@cweijan/ssh2` production tree (`--packagedDependencies @cweijan/ssh2`) plus ignore junk (tests/docs/`nan`/`buildcheck`). No `sharp`/libvips.
+- Package size: pure JS deps are webpack-bundled; vsce ships production deps as configured; ignore junk (tests/docs/`nan`/`buildcheck`). No `sharp`/libvips.
+
+### Release (GitHub Release + VSIX)
+
+- **Gate**: publish only when `package.json` `version` equals tag without `v` (e.g. tag `v0.1.0` requires `"version": "0.1.0"`). No silent rewrite of version at package time for a mismatched tag.
+- **Workflow** `.github/workflows/release.yml` (`Release`): `push` tags `v*`.
+  - Match → lint → `package:vsix` → assert VSIX filename contains version → `softprops/action-gh-release` with **`generate_release_notes: true`** (git history / compare, not CHANGELOG.md).
+  - Mismatch → **no** VSIX / **no** Release; open/update PR branch `version-bump/vX.Y.Z` (label `version-bump`) that only bumps `package.json` to the tag version.
+- **Workflow** `.github/workflows/release-on-merge.yml` (`Release on Version Bump Merge`): PR closed+merged to `main`/`master` when head is `version-bump/v*` or has label `version-bump`.
+  - Checkout **merge commit**; require `package.json` still equals target version; else fail (no tag move, no release).
+  - Force-move tag `vX.Y.Z` → merge commit.
+  - Publish VSIX + GitHub Release **in this job** (`generate_release_notes: true`). Reason: `GITHUB_TOKEN` tag push does **not** re-trigger other workflows, so retag alone would never re-enter `release.yml`.
+- Manual path when version already bumped: `git tag vX.Y.Z && git push origin vX.Y.Z` → `release.yml` match path only.
+- Permissions: `contents: write` (release + tags); `release.yml` also `pull-requests: write` for the bump PR.
 
 
 ## Layout
