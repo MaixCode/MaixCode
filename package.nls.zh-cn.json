@@ -1,5 +1,5 @@
 {
-  "maixcode.displayName": "MaixCode",
+  "maixcode.displayName": "MaixCode - 在 VS Code 中开发 MaixCAM",
   "maixcode.description": "在 VS Code 中使用 MaixVision 能力开发 MaixCAM",
   "maixcode.viewsContainers.mainview": "MaixCode",
   "maixcode.viewsContainers.secondary": "MaixCode",

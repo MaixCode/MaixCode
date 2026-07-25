@@ -1,6 +1,6 @@
 {
-  "maixcode.displayName": "MaixCode",
-  "maixcode.description": "MaixVision on VSCode",
+  "maixcode.displayName": "MaixCode - Develop MaixCAM in VS Code",
+  "maixcode.description": "Develop MaixCAM using MaixVision capabilities in VS Code",
   "maixcode.viewsContainers.mainview": "MaixCode",
   "maixcode.viewsContainers.secondary": "MaixCode",
   "maixcode.views.devices": "Device",
