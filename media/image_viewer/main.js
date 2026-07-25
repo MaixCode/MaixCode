@@ -651,7 +651,7 @@
       histMaxEdge = n === 160 || n === 640 ? n : 320;
     }
     saveViewerSettings();
-    forceHistogram();
+    queueHistogramRefresh();
   }
 
   function applyHistIntervalFromUi() {
@@ -1345,7 +1345,7 @@
       }
       // layout then compute so canvas clientWidth is valid
       requestAnimationFrame(function () {
-        forceHistogram();
+        queueHistogramRefresh();
         applyViewTransform();
       });
     } else {
@@ -1775,7 +1775,7 @@
       updateStatus('Live', 'connected');
       bumpFps();
       updateOverlay();
-      forceHistogram();
+      queueHistogramRefresh();
     };
     streamImage.onerror = function () {
       if (isStreaming && currentMode === 'mjpeg') {
@@ -1813,7 +1813,7 @@
       );
       if (res.ok) {
         applyMeta(headersToMeta(res), null, true);
-        forceHistogram();
+        queueHistogramRefresh();
       }
     } catch (e) {
       /* ignore */
@@ -1999,7 +1999,7 @@
   }
   if (histSpace) {
     histSpace.addEventListener('change', function () {
-      forceHistogram();
+      queueHistogramRefresh();
       saveViewerSettings();
     });
   }
