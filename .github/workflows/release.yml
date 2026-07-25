@@ -95,27 +95,27 @@ jobs:
             echo "PR #${EXISTING} already open for ${BRANCH}"
             gh pr edit "${EXISTING}" --add-label version-bump 2>/dev/null || true
           else
+            cat > /tmp/version-bump-pr-body.md <<EOF
+            ## Version bump for \`v${TAG_VERSION}\`
+
+            Tag \`v${TAG_VERSION}\` was pushed, but \`package.json\` is still \`${PACKAGE_VERSION}\`.
+
+            **Release is blocked** until \`package.json.version === ${TAG_VERSION}\`.
+
+            ### After merge
+            Workflow **Release on Version Bump Merge** will:
+            1. Re-check that the merge commit has \`package.json\` version \`${TAG_VERSION}\`
+            2. Move tag \`v${TAG_VERSION}\` to that merge commit
+            3. Build the VSIX and create the GitHub Release (notes from git history)
+
+            Do not change the version in this PR to anything other than \`${TAG_VERSION}\`.
+            EOF
             gh pr create \
               --base "${DEFAULT_BASE}" \
               --head "${BRANCH}" \
               --title "chore: bump version to ${TAG_VERSION}" \
               --label version-bump \
-              --body "$(cat <<BODY
-## Version bump for \`v${TAG_VERSION}\`
-
-Tag \`v${TAG_VERSION}\` was pushed, but \`package.json\` is still \`${PACKAGE_VERSION}\`.
-
-**Release is blocked** until \`package.json.version === ${TAG_VERSION}\`.
-
-### After merge
-Workflow **Release on Version Bump Merge** will:
-1. Re-check that the merge commit has \`package.json\` version \`${TAG_VERSION}\`
-2. Move tag \`v${TAG_VERSION}\` to that merge commit
-3. Build the VSIX and create the GitHub Release (notes from git history)
-
-Do not change the version in this PR to anything other than \`${TAG_VERSION}\`.
-BODY
-)"
+              --body-file /tmp/version-bump-pr-body.md
           fi
 
       - name: Install dependencies
