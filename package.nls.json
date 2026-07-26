@@ -31,6 +31,8 @@
   "maixcode.command.packageAndInstallApp": "Package and Install App",
   "maixcode.command.runProject": "Run Project on Device",
   "maixcode.command.installRuntime": "Install Runtime on Device",
+  "maixcode.command.openPluginShellCommands": "Open MaixCAM Shell Commands",
+  "maixcode.command.openPluginThresholdEditor": "Open HSV/LAB Threshold Editor",
   "maixcode.debugger.label": "MaixPy Debug",
   "maixcode.debugger.program": "Absolute path to the MaixPy/Python file to run on the device",
   "maixcode.debugger.noDebug": "Run without debug UI extras",

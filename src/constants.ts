@@ -41,6 +41,10 @@ export namespace Commands {
   /** Install / update MaixVision runtime on device (UpdateRuntime) */
   export const installRuntime = "maixcode.installRuntime";
 
+  // Built-in plugin example commands
+  export const openPluginShellCommands = "maixcode.openPluginShellCommands";
+  export const openPluginThresholdEditor = "maixcode.openPluginThresholdEditor";
+
   // Sidebar Commands
   export const refreshExample = "maixcode.refreshExample";
   export const refreshExampleSource = "maixcode.refreshExampleSource";

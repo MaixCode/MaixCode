@@ -209,6 +209,18 @@
         "title": "%maixcode.command.installRuntime%",
         "icon": "$(cloud-download)",
         "category": "MaixCode"
+      },
+      {
+        "command": "maixcode.openPluginShellCommands",
+        "title": "%maixcode.command.openPluginShellCommands%",
+        "icon": "$(terminal)",
+        "category": "MaixCode Plugins"
+      },
+      {
+        "command": "maixcode.openPluginThresholdEditor",
+        "title": "%maixcode.command.openPluginThresholdEditor%",
+        "icon": "$(symbol-color)",
+        "category": "MaixCode Plugins"
       }
     ],
     "menus": {

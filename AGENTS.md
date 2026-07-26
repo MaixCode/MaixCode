@@ -74,6 +74,8 @@ Webpack: single Node target bundle `src/extension.ts` → `dist/extension.js`; `
 - **Run path**: `RunSession` coordinates device run/stop; debug adapter uses it (or equivalent) rather than UI reaching into WS directly for stop/busy.
 - **Ports** (where present): thin interfaces such as transport / frame sink keep device I/O out of UI and debugger glue.
 - Prefer the **smallest correct change**; keep command IDs, menus, and `contextValue`s aligned across `package.json` and TS.
+- **Plugin API**: `src/plugin/types.ts` is the host-facing contract for device plugins. `src/plugin/host.ts` is the composition-root adapter over current device/image/SSH services. New plugin code should depend on `DevicePluginHost` and `PluginManifest`, not on `DeviceService`, `WebSocketService`, or raw `vscode` imports.
+- **Plugin runtime**: `src/plugin/registry.ts` activates built-in plugins from `Instance`. Current built-ins live under `src/plugin/builtin/` and include `shell_commands.ts` (shell-command webview workbench over one-shot SSH exec, with optional open-terminal action) and `threshold_editor.ts` (HSV/LAB threshold webview using latest image frame). Plugins load/activate without requiring a connected device; device-dependent actions should defer their checks until execution time, and UI plugins may open in an empty/waiting state until a device appears. Current host API supports device list/current device, frame events, run/stop, one-shot SSH exec, opening SSH terminal, config access, localized message/input/quick-pick/output/text-document helpers, extension-resource URI resolution, and wrapped `WebviewPanel` creation; raw WS request/send is still a stub.
 
 ## Runtime / product facts agents miss
 

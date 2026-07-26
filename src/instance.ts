@@ -14,6 +14,10 @@ import { ProjectDeployService } from "./service/project_deploy_service";
 import { AppConfigEditor } from "./ui/provider/app_config_editor";
 import { RuntimeService } from "./service/runtime_service";
 import { workspaceFileAccessor } from "./debugger/file_accessor";
+import { DevicePluginHostAdapter } from "./plugin/host";
+import { PluginRegistry } from "./plugin/registry";
+import { createShellCommandsPlugin } from "./plugin/builtin/shell_commands";
+import { createThresholdEditorPlugin } from "./plugin/builtin/threshold_editor";
 
 /**
  * Composition root: wires services and UI.
@@ -34,6 +38,8 @@ export class Instance {
   public projectDeployService: ProjectDeployService;
   public appConfigEditor: AppConfigEditor;
   public runtimeService: RuntimeService;
+  public pluginHost: DevicePluginHostAdapter;
+  public pluginRegistry: PluginRegistry;
   public onStatusChange: (status: Status) => void = () => {};
   private status: Status = Status.offline;
 
@@ -56,6 +62,7 @@ export class Instance {
       onConnectionListChanged: () => {
         this.sidebar.refresh();
         this.statusbar.updateByStatus(this.deviceManager.getStatus());
+        this.pluginHost.notifyDevicesChanged();
         // drop frames for keys no longer connected
         const live = new Set(
           this.deviceManager.getConnectedDevice().map((d) => {
@@ -124,10 +131,22 @@ export class Instance {
       getCurrentDevice: () => this.deviceManager.getCurrentDevice(),
     });
 
+    this.pluginHost = new DevicePluginHostAdapter(
+      context,
+      this.deviceManager,
+      this.imageService,
+      this.sshTerminalService
+    );
+    this.pluginRegistry = new PluginRegistry(context, this.pluginHost);
+    this.pluginRegistry.register(createShellCommandsPlugin());
+    this.pluginRegistry.register(createThresholdEditorPlugin());
+    void this.pluginRegistry.activateAll();
+
     context.subscriptions.push({
       dispose: () => {
         this.sshTerminalService.dispose();
         this.sftpService.dispose();
+        void this.pluginRegistry.dispose();
       },
     });
 
