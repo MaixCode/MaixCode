@@ -3,6 +3,7 @@ import { TreeItem } from "vscode";
 import { Instance } from "../../instance";
 import { Status } from "../../model/status";
 import { Commands } from "../../constants";
+import { log } from "../../logger";
 
 enum DeviceType {
   localDevice = "local",
@@ -21,6 +22,7 @@ export class DeviceDataProvider implements vscode.TreeDataProvider<TreeItem> {
   }
 
   public refresh() {
+    log("[DeviceDataProvider] refresh");
     this._onDidChangeTreeData.fire();
   }
   getTreeItem(element: TreeItem) {

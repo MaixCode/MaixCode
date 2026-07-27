@@ -1,4 +1,5 @@
 import { FrameSink } from "../ports/frame_sink";
+import { log } from "../logger";
 
 export interface FrameMetadata {
   width?: number;
@@ -65,6 +66,7 @@ export class FrameStore implements FrameSink {
 
     this.frames.set(key, frame);
     this.emit(frame);
+    log(`[FrameStore] setImage key=${key} mime=${mime} size=${imageData.byteLength} ts=${frame.timestamp}`);
   }
 
   public getFrame(key: string): Frame | undefined {
@@ -80,7 +82,11 @@ export class FrameStore implements FrameSink {
   }
 
   public clearKey(key: string): void {
+    const had = this.frames.has(key);
     this.frames.delete(key);
+    if (had) {
+      log(`[FrameStore] clearKey key=${key}`);
+    }
   }
 
   public clear(): void {

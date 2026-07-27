@@ -1,10 +1,12 @@
 import * as fs from "fs";
 import * as path from "path";
 import JSZip from "jszip";
+import { log } from "../../logger";
 
 export function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
+    log(`[fs_util] ensureDir created ${dir}`);
   }
 }
 
@@ -13,6 +15,7 @@ export async function emptyDir(dir: string): Promise<void> {
     fs.mkdirSync(dir, { recursive: true });
     return;
   }
+  log(`[fs_util] emptyDir ${dir}`);
   await fs.promises.rm(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
 }

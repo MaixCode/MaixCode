@@ -1,3 +1,5 @@
+import { log } from "../logger";
+
 export class DeviceAddr {
   constructor(public name: string, public ip: string) {}
 }
@@ -15,6 +17,7 @@ export class DeviceInfo {
 
   public static fromText(text: string) {
     let data = JSON.parse(text);
+    log(`[DeviceInfo] parsed device=${data.device} sysVer=${data.sysVer} maixpyVer=${data.maixpyVer} runtime=${data.runtime}`);
     return new DeviceInfo(
       data.sysVer,
       data.maixpyVer,

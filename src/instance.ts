@@ -22,6 +22,7 @@ import { PluginStorage } from "./plugin/storage";
 import { MarketplaceService } from "./plugin/marketplace";
 import { createShellCommandsPlugin } from "./plugin/builtin/shell_commands";
 import { createThresholdEditorPlugin } from "./plugin/builtin/threshold_editor";
+import { log } from "./logger";
 
 /**
  * Composition root: wires services and UI.
@@ -54,6 +55,7 @@ export class Instance {
   private connectionListeners = new Set<() => void>();
 
   private constructor(context: vscode.ExtensionContext) {
+    log("[Instance] constructing composition root");
     this.imageService = new ImageService(context);
     this.sshTerminalService = new SshTerminalService(context);
     this.sftpService = new SftpService(context);
@@ -68,6 +70,7 @@ export class Instance {
         this.imageService.setImage(deviceKey, data);
       },
       onConnectionListChanged: () => {
+        log("[Instance] connection list changed — refreshing UI");
         this.sidebar.refresh();
         this.statusbar.updateByStatus(this.deviceManager.getStatus());
         this.pluginHost.notifyDevicesChanged();
@@ -102,6 +105,7 @@ export class Instance {
     });
 
     this.discoveryService.onDeviceChanged = (devices) => {
+      log(`[Instance] device discovery changed: ${devices.length} devices`);
       this.sidebar.refresh();
       this.deviceManager.tryAutoConnect(devices);
     };
@@ -129,10 +133,12 @@ export class Instance {
       getCurrentDevice: () => this.deviceManager.getCurrentDevice(),
       fileAccessor: workspaceFileAccessor,
     });
+    log("[Instance] ProjectDeployService created");
 
     this.appConfigEditor = new AppConfigEditor(context, {
       packageService: this.projectDeployService.packageService,
     });
+    log("[Instance] AppConfigEditor created");
 
     this.runtimeService = new RuntimeService({
       getConnectedDevices: () => this.deviceManager.getConnectedDevice(),
@@ -194,6 +200,7 @@ export class Instance {
         }
       })
     );
+    log("[Instance] RuntimeService created");
 
     context.subscriptions.push({
       dispose: () => {
@@ -256,11 +263,15 @@ export class Instance {
 
   static initInstance(context: vscode.ExtensionContext) {
     if (!Instance.instance) {
+      log("[Instance] initInstance creating singleton");
       Instance.instance = new Instance(context);
+    } else {
+      log("[Instance] initInstance called but singleton already exists");
     }
   }
 
   public setStatus(status: Status) {
+    log(`[Instance] setStatus: ${Status[status]} (was ${Status[this.status]})`);
     this.status = status;
     this.statusbar.updateByStatus(status);
   }

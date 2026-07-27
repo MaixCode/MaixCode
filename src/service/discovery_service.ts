@@ -23,6 +23,7 @@ export class DiscoveryService {
   ) {}
 
   public stop(): void {
+    log("[DiscoveryService] stop");
     if (this.discoverTimeout) {
       clearTimeout(this.discoverTimeout);
       this.discoverTimeout = undefined;
@@ -31,6 +32,7 @@ export class DiscoveryService {
   }
 
   public start(): void {
+    log("[DiscoveryService] start");
     this.discoverLoop();
   }
 

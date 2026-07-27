@@ -132,7 +132,7 @@ export class ImageService implements FrameSink {
       this.server = undefined;
     }
     this.listening = false;
-    log("Image service disposed");
+    log("[Image Service] Image service disposed");
   }
 
   private preferredPort(): number {
@@ -196,9 +196,9 @@ export class ImageService implements FrameSink {
         this.server = server;
         this.wss = wss;
         this.listening = true;
-        log(`Image service listening on ${this.getHttpBaseUrl()}`);
-        log(`- HTTP:  GET /image/:key  GET /stream/:key  GET /keys`);
-        log(`- WS:    ${this.getWsUrl()}`);
+        log(`[Image Service] Image service listening on ${this.getHttpBaseUrl()}`);
+        log(`[Image Service] - HTTP:  GET /image/:key  GET /stream/:key  GET /keys`);
+        log(`[Image Service] - WS:    ${this.getWsUrl()}`);
         this.readyResolve?.();
         this.readyResolve = undefined;
         resolve();
@@ -372,7 +372,7 @@ export class ImageService implements FrameSink {
       res.write("\r\n");
       return ok !== false;
     } catch (e) {
-      log(`MJPEG write error: ${e instanceof Error ? e.message : String(e)}`);
+      log(`[Image Service] MJPEG write error: ${e instanceof Error ? e.message : String(e)}`);
       return false;
     }
   }
@@ -480,7 +480,7 @@ export class ImageService implements FrameSink {
         this.wsState.delete(ws);
       });
       ws.on("error", (err) => {
-        log(`Image WS client error: ${err.message}`);
+        log(`[Image Service] Image WS client error: ${err.message}`);
         this.wsState.delete(ws);
       });
     });
@@ -537,7 +537,7 @@ export class ImageService implements FrameSink {
       });
       ws.send(Buffer.from(frame.buffer));
     } catch (e) {
-      log(`WS send error: ${e instanceof Error ? e.message : String(e)}`);
+      log(`[Image Service] WS send error: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

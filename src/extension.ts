@@ -180,27 +180,27 @@ const maixpyDebugConfigurationProvider: vscode.DebugConfigurationProvider = {
 export function activate(context: vscode.ExtensionContext) {
   try {
     initLogger(context);
-    log("MaixCode is now active!");
-    log(`Registering debug type: ${DebugTypeName}`);
+    log("[Extension] MaixCode is now active!");
+    log(`[Extension] Registering debug type: ${DebugTypeName}`);
 
     Instance.initInstance(context);
-    log("Instance initialized");
+    log("[Extension] Instance initialized");
 
     const discoveryEnabled = vscode.workspace
       .getConfiguration(ConfigSection)
       .get<boolean>(ConfigKeys.enableDeviceDiscovery, true);
     if (discoveryEnabled) {
       Instance.instance.discoveryService.start();
-      log("Discovery service started");
+      log("[Extension] Discovery service started");
     } else {
-      log("Device discovery disabled by settings");
+      log("[Extension] Device discovery disabled by settings");
     }
 
     const factory = new DebugAdapterFactory();
     context.subscriptions.push(
       vscode.debug.registerDebugAdapterDescriptorFactory(DebugTypeName, factory)
     );
-    log(`DebugAdapterDescriptorFactory registered for type=${DebugTypeName}`);
+    log(`[Extension] DebugAdapterDescriptorFactory registered for type=${DebugTypeName}`);
 
     // Initial: seed launch.json when user creates config
     context.subscriptions.push(
@@ -225,17 +225,17 @@ export function activate(context: vscode.ExtensionContext) {
         maixpyDebugConfigurationProvider
       )
     );
-    log("DebugConfigurationProvider registered (Initial + Dynamic + default)");
+    log("[Extension] DebugConfigurationProvider registered (Initial + Dynamic + default)");
 
     context.subscriptions.push(
       vscode.debug.onDidStartDebugSession((session) => {
         log(
-          `onDidStartDebugSession type=${session.type} name=${session.name} id=${session.id}`
+          `[Extension] onDidStartDebugSession type=${session.type} name=${session.name} id=${session.id}`
         );
       }),
       vscode.debug.onDidTerminateDebugSession((session) => {
         log(
-          `onDidTerminateDebugSession type=${session.type} name=${session.name} id=${session.id}`
+          `[Extension] onDidTerminateDebugSession type=${session.type} name=${session.name} id=${session.id}`
         );
       })
     );
@@ -246,7 +246,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     initCommands(context);
-    log("Commands registered");
+    log("[Extension] Commands registered");
   } catch (e) {
     error(e instanceof Error ? e : String(e), true);
     throw e;

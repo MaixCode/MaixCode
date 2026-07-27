@@ -3,7 +3,7 @@ import { DeviceService } from "./device_service";
 import { DeviceIpItem } from "../ui/provider/device_data";
 import { DeviceAddr } from "../model/device";
 import { Status } from "../model/status";
-import { error, info } from "../logger";
+import { error, info, log } from "../logger";
 import {
   ConfigKeys,
   ConfigSection,
@@ -62,6 +62,7 @@ export class DeviceManager {
   }
 
   public connectDeviceCommand(args: any) {
+    log(`[DeviceManager] connectDeviceCommand args=${typeof args}`);
     this.suppressAutoConnect = false;
     let ip: string | undefined = undefined;
     let name: string | undefined = undefined;
@@ -226,7 +227,10 @@ export class DeviceManager {
   }
 
   public disconnectDeviceCommand() {
+    log("[DeviceManager] disconnectDeviceCommand");
     if (this.currentDevice) {
+      const ip = this.currentDevice.device?.ip;
+      log(`[DeviceManager] disconnecting from ${ip}`);
       this.suppressAutoConnect = true;
       this.autoConnectPendingIp = undefined;
       this.currentDevice.disconnect();
@@ -242,6 +246,7 @@ export class DeviceManager {
   }
 
   public addDevice(device: DeviceAddr) {
+    log(`[DeviceManager] addDevice ${device.name} (${device.ip})`);
     let deviceService = new DeviceService(
       this.context,
       device,
@@ -253,6 +258,7 @@ export class DeviceManager {
     };
     deviceService.onConnectionStateChange = () => {
       const ip = deviceService.device?.ip;
+      log(`[DeviceManager] connection state change ip=${ip} connected=${deviceService.wss?.isConnected}`);
       if (deviceService.wss?.isConnected && deviceService.device) {
         void this.context.globalState.update(LastConnectedDeviceKey, {
           name: deviceService.device.name,
@@ -308,6 +314,7 @@ export class DeviceManager {
   }
 
   public setImageFormatForDevice(deviceKey: string, format: ImageType): boolean {
+    log(`[DeviceManager] setImageFormatForDevice key=${deviceKey} format=${format}`);
     const key = deviceKey.trim();
     if (!key) {
       return false;
