@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { WebSocketService } from "./websocket_service";
-import { info, warn, error } from "../logger";
+import { info, log, warn, error } from "../logger";
 import { DeviceAddr } from "../model/device";
 import { Status } from "../model/status";
 import { DeviceTransport } from "../ports/device_transport";
@@ -30,13 +30,14 @@ export class DeviceService {
       this.device = device;
     }
     if (!this.device) {
-      error("Device is not set");
+      error("[DeviceService] connect: Device is not set");
       return;
     }
     if (this.wss) {
-      warn(`Device ${this.device.name} is already connected or offline`);
+      warn(`[DeviceService] connect: Device ${this.device.name} is already connected or offline`);
       return;
     }
+    log(`[DeviceService] connect ${this.device.name} (${this.device.ip})`);
     this.wss = new WebSocketService(this.device.ip);
     this.wss.on("runState", (running: boolean) => {
       this.onRunStateChange?.(running);
@@ -62,6 +63,9 @@ export class DeviceService {
   }
 
   public disconnect() {
+    const ip = this.device?.ip;
+    const name = this.device?.name;
+    log(`[DeviceService] disconnect ${name} (${ip})`);
     if (this.wss) {
       this.wss.disconnect();
       this.wss = undefined;
@@ -71,6 +75,10 @@ export class DeviceService {
 
   /** Connected transport for run/debug; undefined if offline. */
   public get transport(): DeviceTransport | undefined {
+    const t = this.wss;
+    if (t) {
+      log(`[DeviceService] transport requested: connected=${t.isConnected}`);
+    }
     return this.wss;
   }
 
@@ -81,6 +89,7 @@ export class DeviceService {
   }
 
   public setImageFormat(format: ImageType) {
+    log(`[DeviceService] setImageFormat ${format}`);
     this.wss?.setImageFormat(format);
   }
 

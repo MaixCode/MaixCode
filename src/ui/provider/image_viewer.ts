@@ -372,10 +372,10 @@ export class ImageViewer implements vscode.WebviewViewProvider {
         break;
       case "deviceSelected":
         this.updateViewerStreamState(webview, { deviceKey: message.key });
-        log(`Image viewer selected device key=${message.key}`);
+        log(`[ImageViewer] selected device key=${message.key}`);
         break;
       case "modeChanged":
-        log(`Image viewer mode=${message.mode}`);
+        log(`[ImageViewer] mode=${message.mode}`);
         break;
       case "streamStateChanged":
         this.updateViewerStreamState(webview, {

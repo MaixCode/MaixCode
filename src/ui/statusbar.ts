@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { Status } from "../model/status";
 import { Instance } from "../instance";
 import { Commands } from "../constants";
+import { log } from "../logger";
 
 export class StatusBar {
   private statusBarItem: vscode.StatusBarItem;
@@ -9,6 +10,7 @@ export class StatusBar {
   private runProjectItem: vscode.StatusBarItem;
 
   constructor() {
+    log("[StatusBar] constructor");
     this.statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
       100
@@ -44,6 +46,7 @@ export class StatusBar {
   }
 
   public updateByStatus(status: Status) {
+    log(`[StatusBar] updateByStatus ${Status[status]}`);
     this.applyStatus(status);
     this.updateRunButtons(status);
   }

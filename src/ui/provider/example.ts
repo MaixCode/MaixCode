@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { info, log, warn } from "../../logger";
+import { error, info, log, warn } from "../../logger";
 import { ExampleFileSystemProvider } from "./example_fs";
 import { ExampleSource } from "../../service/example_source/types";
 import { createExampleSources } from "../../service/example_source/registry";
@@ -183,7 +183,7 @@ export class ExampleFileProvider
         expand: true,
       });
     } catch (error) {
-      console.error("Error revealing tree item:", error);
+      warn(`[ExampleFileProvider] reveal error: ${error}`);
     }
   }
 
@@ -277,7 +277,7 @@ export class ExampleFileProvider
       const document = await vscode.workspace.openTextDocument(fileUri);
       return document.languageId;
     } catch (error) {
-      console.error("Error guessing language type:", error);
+      warn(`[ExampleFileProvider] guess language error: ${error}`);
     }
     return undefined;
   }

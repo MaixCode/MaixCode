@@ -234,26 +234,6 @@
           "group": "navigation@2"
         },
         {
-          "command": "maixcode.packageApp",
-          "when": "view == maixcode-devices",
-          "group": "navigation@3"
-        },
-        {
-          "command": "maixcode.installApp",
-          "when": "view == maixcode-devices",
-          "group": "navigation@4"
-        },
-        {
-          "command": "maixcode.configureProject",
-          "when": "view == maixcode-devices",
-          "group": "navigation@5"
-        },
-        {
-          "command": "maixcode.installRuntime",
-          "when": "view == maixcode-devices",
-          "group": "navigation@6"
-        },
-        {
           "command": "maixcode.openImageViewer",
           "when": "view == maixcode-devices",
           "group": "navigation@7"
