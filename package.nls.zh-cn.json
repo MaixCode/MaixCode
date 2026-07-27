@@ -86,5 +86,15 @@
   "maixcode.config.sftpBookmarks.name": "MaixSFTP 根下的显示名称",
   "maixcode.config.sftpBookmarks.remotePath": "绝对远程路径（也接受 remote_path）",
   "maixcode.config.sftpBookmarks.remote_path": "remotePath 的别名",
-  "maixcode.config.sftpBookmarks.order": "排序（升序）"
+  "maixcode.config.sftpBookmarks.order": "排序（升序）",
+  "maixcode.command.refreshMarketplace": "刷新插件商场",
+  "maixcode.config.pluginMarketplaces": "插件商场源，每个源指向一个 index.json 描述可用插件。",
+  "maixcode.config.pluginMarketplaces.id": "唯一标识",
+  "maixcode.config.pluginMarketplaces.label": "商场标签",
+  "maixcode.config.pluginMarketplaces.type": "源类型：github（raw.githubusercontent.com）或 http（直接 URL）",
+  "maixcode.config.pluginMarketplaces.owner": "GitHub 所有者",
+  "maixcode.config.pluginMarketplaces.repo": "GitHub 仓库名",
+  "maixcode.config.pluginMarketplaces.path": "仓库内 index.json 路径（默认 marketplace/index.json）",
+  "maixcode.config.pluginMarketplaces.ref": "分支、标签或提交（默认 main）",
+  "maixcode.config.pluginMarketplaces.url": "商场 index.json 的直接 URL（type http 时使用）"
 }

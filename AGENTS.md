@@ -60,6 +60,9 @@ yarn run test             # pretest = compile-tests + compile + lint, then vscod
 | `src/ui/provider/example.ts` | Example tree + open virtual/source file |
 | `src/ui/provider/example_fs.ts` | virtual FS (`example://`) + disk rehydrate |
 | `src/ui/provider/app_config_editor.ts` + `media/app_config_editor/*` | visual `app.yaml` WebviewPanel editor |
+| `src/plugin/` | plugin host API, registry, loader, storage, marketplace, manager, types |
+| `src/plugin/marketplace.ts` + `marketplace_types.ts` | plugin marketplace: fetch indexes, download/extract (axios/JSZip), install via registry |
+| `src/plugin/manager.ts` + `media/plugin_manager.js` | plugin manager webview with Installed + Marketplace tabs |
 | `src/debugger/` | inline Debug Adapter (not a separate Python process) |
 | `package.nls.json` / `package.nls.zh-cn.json` | Static contributes i18n (`%key%` in `package.json`) |
 | `l10n/bundle.l10n*.json` | Runtime `vscode.l10n.t` bundles (`l10n` field in package.json) |
@@ -77,6 +80,7 @@ Webpack: single Node target bundle `src/extension.ts` → `dist/extension.js`; `
 - **Plugin API**: `src/plugin/types.ts` is the host-facing contract for device plugins. `src/plugin/host.ts` is the composition-root adapter over current device/image/SSH services. New plugin code should depend on `DevicePluginHost` and `PluginManifest`, not on `DeviceService`, `WebSocketService`, or raw `vscode` imports.
 - **Plugin runtime**: `src/plugin/registry.ts` activates built-in plugins from `Instance`. Current built-ins live under `src/plugin/builtin/` and include `shell_commands.ts` (shell-command webview workbench over one-shot SSH exec, with optional open-terminal action) and `threshold_editor.ts` (HSV/LAB threshold webview using latest image frame). Plugins load/activate without requiring a connected device; device-dependent actions should defer their checks until execution time, and UI plugins may open in an empty/waiting state until a device appears. Current host API supports device list/current device, frame events, run/stop, one-shot SSH exec, opening SSH terminal, config access, localized message/input/quick-pick/output/text-document helpers, extension-resource URI resolution, and wrapped `WebviewPanel` creation; raw WS request/send is still a stub.
 - **Local plugin sample**: `samples/device-process-list/` is a ready-to-import folder plugin example. It uses `host.ui.createPanel()` and `host.ssh.exec("ps")` to render the current device process table in a webview. Keep sample plugins self-contained and local-import friendly.
+- **Plugin marketplace**: `MarketplaceService` (`src/plugin/marketplace.ts`) fetches plugin indexes from configured sources (`maixcode.pluginMarketplaces` setting array). Each source is `github` (raw.githubusercontent.com) or `http` (direct URL) pointing to an `index.json` with `MarketplacePluginEntry[]`. Each entry has a `source` field with one of 4 types: `path` (subdir within the marketplace repo), `github-repo` (external repo + optional subdir), `github-release` (release asset via GitHub API), or `http` (direct zip URL). The `MarketplaceService` downloads/extracts (axios + JSZip) to a temp dir, then the `PluginManager` calls `registry.importFromFolder()`. The UI is a second tab in the plugin manager webview (Installed | Marketplace) showing install/update buttons and the update badge when a newer version is available in the index. Config types in `src/plugin/marketplace_types.ts`; runtime strings in both l10n bundles.
 
 ## Runtime / product facts agents miss
 

@@ -1,0 +1,16 @@
+{
+  "id": "sample.hello-world",
+  "name": "Hello World",
+  "version": "1.0.0",
+  "main": "index.js",
+  "apiVersion": "1.0",
+  "permissions": ["ui.command", "ui.panel"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "sample.hello-world.say",
+        "title": "Say Hello"
+      }
+    ]
+  }
+}

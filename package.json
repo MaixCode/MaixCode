@@ -239,6 +239,12 @@
         "title": "%maixcode.command.openPluginThresholdEditor%",
         "icon": "$(symbol-color)",
         "category": "MaixCode Plugins"
+      },
+      {
+        "command": "maixcode.refreshMarketplace",
+        "title": "%maixcode.command.refreshMarketplace%",
+        "icon": "$(refresh)",
+        "category": "MaixCode Plugins"
       }
     ],
     "menus": {
@@ -292,6 +298,11 @@
           "command": "maixcode.openPluginManager",
           "when": "view == maixcode-devices",
           "group": "navigation@8"
+        },
+        {
+          "command": "maixcode.refreshMarketplace",
+          "when": "view == maixcode-devices",
+          "group": "navigation@9"
         },
         {
           "command": "maixcode.openImageViewerPanel",
@@ -663,6 +674,59 @@
           "type": "string",
           "default": "",
           "description": "%maixcode.config.githubToken%"
+        },
+        "maixcode.pluginMarketplaces": {
+          "type": "array",
+          "default": [
+            {
+              "id": "official",
+              "label": "Official",
+              "type": "github",
+              "owner": "MaixCode",
+              "repo": "Plugin-Marketplace",
+              "path": "index.json"
+            }
+          ],
+          "description": "%maixcode.config.pluginMarketplaces%",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "type"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "%maixcode.config.pluginMarketplaces.id%"
+              },
+              "label": {
+                "type": "string",
+                "description": "%maixcode.config.pluginMarketplaces.label%"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["github", "http"],
+                "description": "%maixcode.config.pluginMarketplaces.type%"
+              },
+              "owner": {
+                "type": "string",
+                "description": "%maixcode.config.pluginMarketplaces.owner%"
+              },
+              "repo": {
+                "type": "string",
+                "description": "%maixcode.config.pluginMarketplaces.repo%"
+              },
+              "path": {
+                "type": "string",
+                "description": "%maixcode.config.pluginMarketplaces.path%"
+              },
+              "ref": {
+                "type": "string",
+                "description": "%maixcode.config.pluginMarketplaces.ref%"
+              },
+              "url": {
+                "type": "string",
+                "description": "%maixcode.config.pluginMarketplaces.url%"
+              }
+            }
+          }
         },
         "maixcode.sshPort": {
           "type": "number",

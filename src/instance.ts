@@ -19,6 +19,7 @@ import { PluginLoader } from "./plugin/loader";
 import { PluginManager } from "./plugin/manager";
 import { PluginRegistry } from "./plugin/registry";
 import { PluginStorage } from "./plugin/storage";
+import { MarketplaceService } from "./plugin/marketplace";
 import { createShellCommandsPlugin } from "./plugin/builtin/shell_commands";
 import { createThresholdEditorPlugin } from "./plugin/builtin/threshold_editor";
 
@@ -46,6 +47,7 @@ export class Instance {
   public pluginStorage: PluginStorage;
   public pluginRegistry: PluginRegistry;
   public pluginManager: PluginManager;
+  public marketplaceService: MarketplaceService;
   public onStatusChange: (status: Status) => void = () => {};
   private status: Status = Status.offline;
 
@@ -151,13 +153,17 @@ export class Instance {
       this.pluginLoader,
       this.pluginStorage
     );
-    this.pluginManager = new PluginManager(context, this.pluginRegistry, this.pluginStorage);
+    this.marketplaceService = new MarketplaceService(context, this.pluginStorage, this.pluginRegistry);
+    this.pluginManager = new PluginManager(context, this.pluginRegistry, this.pluginStorage, this.marketplaceService);
     this.pluginRegistry.registerBuiltin(createShellCommandsPlugin());
     this.pluginRegistry.registerBuiltin(createThresholdEditorPlugin());
     void this.pluginRegistry.loadInstalledLocalPlugins().then(() => this.pluginRegistry.activateAll());
 
     context.subscriptions.push(
       vscode.commands.registerCommand(Commands.openPluginManager, () => this.pluginManager.open()),
+      vscode.commands.registerCommand(Commands.refreshMarketplace, async () => {
+        await this.pluginManager.refreshMarketplace();
+      }),
       vscode.commands.registerCommand(Commands.reloadPlugins, async () => {
         for (const plugin of this.pluginRegistry.list()) {
           await this.pluginRegistry.reload(plugin.id);

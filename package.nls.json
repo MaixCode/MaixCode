@@ -86,5 +86,15 @@
   "maixcode.config.sftpBookmarks.name": "Display name under MaixSFTP root",
   "maixcode.config.sftpBookmarks.remotePath": "Absolute remote path (also accepts remote_path)",
   "maixcode.config.sftpBookmarks.remote_path": "Alias for remotePath",
-  "maixcode.config.sftpBookmarks.order": "Sort order (ascending)"
+  "maixcode.config.sftpBookmarks.order": "Sort order (ascending)",
+  "maixcode.command.refreshMarketplace": "Refresh Plugin Marketplace",
+  "maixcode.config.pluginMarketplaces": "Plugin marketplace sources. Each entry points to an index.json describing available plugins.",
+  "maixcode.config.pluginMarketplaces.id": "Unique identifier for this marketplace",
+  "maixcode.config.pluginMarketplaces.label": "Display name in the Marketplace tab",
+  "maixcode.config.pluginMarketplaces.type": "Source type: github (raw.githubusercontent.com) or http (direct URL)",
+  "maixcode.config.pluginMarketplaces.owner": "GitHub owner",
+  "maixcode.config.pluginMarketplaces.repo": "GitHub repository name",
+  "maixcode.config.pluginMarketplaces.path": "Path to index.json in the repo (default marketplace/index.json)",
+  "maixcode.config.pluginMarketplaces.ref": "Branch, tag, or commit (default main)",
+  "maixcode.config.pluginMarketplaces.url": "Direct URL to marketplace index.json (for type http)"
 }

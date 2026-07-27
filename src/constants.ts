@@ -48,6 +48,9 @@ export namespace Commands {
   export const openPluginShellCommands = "maixcode.openPluginShellCommands";
   export const openPluginThresholdEditor = "maixcode.openPluginThresholdEditor";
 
+  // Marketplace
+  export const refreshMarketplace = "maixcode.refreshMarketplace";
+
   // Sidebar Commands
   export const refreshExample = "maixcode.refreshExample";
   export const refreshExampleSource = "maixcode.refreshExampleSource";
