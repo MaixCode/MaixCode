@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ConfigKeys, ConfigSection } from "../constants";
+import { info } from "../logger";
 import { Status } from "../model/status";
 import { ImageType } from "../model/image_type";
 import { DeviceManager } from "../service/device_manager";
@@ -8,6 +9,7 @@ import { readSshCredentials } from "../service/ssh/credentials";
 import { SshSession } from "../service/ssh/ssh_session";
 import { SshTerminalService } from "../service/ssh/ssh_terminal_service";
 import type { OpenSshTerminalRequest } from "../service/ssh/types";
+import { log } from "../logger";
 import {
   DevicePluginConfig,
   DevicePluginContext,
@@ -377,7 +379,7 @@ export class DevicePluginHostAdapter implements DevicePluginHost {
             enableScripts: true,
             retainContextWhenHidden: true,
             localResourceRoots: (localResourceRoots ?? [
-              vscode.Uri.joinPath(this.extensionContext.extensionUri, "media").toString(),
+              vscode.Uri.joinPath(this.extensionContext.extensionUri).toString(),
             ]).map((root) => toUri(root)),
           }
         );
@@ -391,6 +393,7 @@ export class DevicePluginHostAdapter implements DevicePluginHost {
         return pluginPanel;
       },
       registerCommand(id: string, handler: () => void | Promise<void>) {
+        log(`Registering command: ${id}`);
         return createPluginDisposable(vscode.commands.registerCommand(id, handler));
       },
     };
@@ -419,6 +422,12 @@ export class DevicePluginHostAdapter implements DevicePluginHost {
 
   public notifyDeviceOutput(deviceKey: string, text: string): void {
     this.onDidReceiveOutputEmitter.fire({ deviceKey, text });
+  }
+
+  /** @internal called via registry-scoped wrapper */
+  log(message: string, pluginId?: string): void {
+    const prefix = pluginId ? `[Plugin:${pluginId}]` : "[Plugin]";
+    info(`${prefix} ${message}`);
   }
 
   getCurrentDevice(): DevicePluginContext | undefined {

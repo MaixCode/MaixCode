@@ -42,6 +42,9 @@ export namespace Commands {
   export const installRuntime = "maixcode.installRuntime";
 
   // Built-in plugin example commands
+  export const openPluginManager = "maixcode.openPluginManager";
+  export const importLocalPlugin = "maixcode.importLocalPlugin";
+  export const reloadPlugins = "maixcode.reloadPlugins";
   export const openPluginShellCommands = "maixcode.openPluginShellCommands";
   export const openPluginThresholdEditor = "maixcode.openPluginThresholdEditor";
 

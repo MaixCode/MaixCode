@@ -211,6 +211,24 @@
         "category": "MaixCode"
       },
       {
+        "command": "maixcode.openPluginManager",
+        "title": "%maixcode.command.openPluginManager%",
+        "icon": "$(extensions)",
+        "category": "MaixCode Plugins"
+      },
+      {
+        "command": "maixcode.importLocalPlugin",
+        "title": "%maixcode.command.importLocalPlugin%",
+        "icon": "$(folder-opened)",
+        "category": "MaixCode Plugins"
+      },
+      {
+        "command": "maixcode.reloadPlugins",
+        "title": "%maixcode.command.reloadPlugins%",
+        "icon": "$(refresh)",
+        "category": "MaixCode Plugins"
+      },
+      {
         "command": "maixcode.openPluginShellCommands",
         "title": "%maixcode.command.openPluginShellCommands%",
         "icon": "$(terminal)",
@@ -269,6 +287,11 @@
           "command": "maixcode.openImageViewer",
           "when": "view == maixcode-devices",
           "group": "navigation@7"
+        },
+        {
+          "command": "maixcode.openPluginManager",
+          "when": "view == maixcode-devices",
+          "group": "navigation@8"
         },
         {
           "command": "maixcode.openImageViewerPanel",

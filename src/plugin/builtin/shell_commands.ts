@@ -52,6 +52,7 @@ export function createShellCommandsPlugin(): DevicePlugin {
       },
     },
     async activate(host: DevicePluginHost) {
+      host.log("activated");
       const deviceSub = host.onDidChangeDevice(() => {
         if (!panel) {
           return;
@@ -63,9 +64,11 @@ export function createShellCommandsPlugin(): DevicePlugin {
         async () => {
           if (panel) {
             panel.reveal("beside");
+            host.log("reopen panel");
             await postState(panel, host, state);
             return;
           }
+          host.log("open panel");
           panel = host.ui.createPanel({
             viewType: "maixcodePluginShellCommands",
             title: host.ui.t("MaixCAM Shell Commands"),
@@ -108,6 +111,7 @@ export function createShellCommandsPlugin(): DevicePlugin {
                 return;
               }
               if (payload.type === "run") {
+                host.log(`run ${payload.command || state.command || ""}`);
                 state = await runCommand(host, payload.command || state.command || "", state, panel!);
               }
             },

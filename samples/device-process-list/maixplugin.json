@@ -1,0 +1,16 @@
+{
+  "id": "sample.device-process-list",
+  "name": "Device Process List",
+  "version": "0.1.0",
+  "main": "index.js",
+  "apiVersion": "1.0",
+  "permissions": ["ssh.shell", "ui.command", "ui.panel", "device.connection"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "sample.device-process-list.open",
+        "title": "Open Device Process List"
+      }
+    ]
+  }
+}

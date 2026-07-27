@@ -222,6 +222,8 @@ export interface DevicePluginConfig {
 export interface DevicePluginHost {
   readonly apiVersion: PluginApiVersion;
 
+  log(message: string): void;
+
   getCurrentDevice(): DevicePluginContext | undefined;
   getConnectedDevices(): DevicePluginContext[];
 

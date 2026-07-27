@@ -9,13 +9,16 @@ import { ImageViewer } from "./ui/provider/image_viewer";
 import { ImageService } from "./service/image_service";
 import { SshTerminalService } from "./service/ssh/ssh_terminal_service";
 import { SftpService } from "./service/ssh/sftp_service";
-import { ConfigKeys, ConfigSection } from "./constants";
+import { Commands, ConfigKeys, ConfigSection } from "./constants";
 import { ProjectDeployService } from "./service/project_deploy_service";
 import { AppConfigEditor } from "./ui/provider/app_config_editor";
 import { RuntimeService } from "./service/runtime_service";
 import { workspaceFileAccessor } from "./debugger/file_accessor";
 import { DevicePluginHostAdapter } from "./plugin/host";
+import { PluginLoader } from "./plugin/loader";
+import { PluginManager } from "./plugin/manager";
 import { PluginRegistry } from "./plugin/registry";
+import { PluginStorage } from "./plugin/storage";
 import { createShellCommandsPlugin } from "./plugin/builtin/shell_commands";
 import { createThresholdEditorPlugin } from "./plugin/builtin/threshold_editor";
 
@@ -39,7 +42,10 @@ export class Instance {
   public appConfigEditor: AppConfigEditor;
   public runtimeService: RuntimeService;
   public pluginHost: DevicePluginHostAdapter;
+  public pluginLoader: PluginLoader;
+  public pluginStorage: PluginStorage;
   public pluginRegistry: PluginRegistry;
+  public pluginManager: PluginManager;
   public onStatusChange: (status: Status) => void = () => {};
   private status: Status = Status.offline;
 
@@ -131,21 +137,63 @@ export class Instance {
       getCurrentDevice: () => this.deviceManager.getCurrentDevice(),
     });
 
+    this.pluginLoader = new PluginLoader();
+    this.pluginStorage = new PluginStorage(context);
     this.pluginHost = new DevicePluginHostAdapter(
       context,
       this.deviceManager,
       this.imageService,
       this.sshTerminalService
     );
-    this.pluginRegistry = new PluginRegistry(context, this.pluginHost);
-    this.pluginRegistry.register(createShellCommandsPlugin());
-    this.pluginRegistry.register(createThresholdEditorPlugin());
-    void this.pluginRegistry.activateAll();
+    this.pluginRegistry = new PluginRegistry(
+      context,
+      this.pluginHost,
+      this.pluginLoader,
+      this.pluginStorage
+    );
+    this.pluginManager = new PluginManager(context, this.pluginRegistry, this.pluginStorage);
+    this.pluginRegistry.registerBuiltin(createShellCommandsPlugin());
+    this.pluginRegistry.registerBuiltin(createThresholdEditorPlugin());
+    void this.pluginRegistry.loadInstalledLocalPlugins().then(() => this.pluginRegistry.activateAll());
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand(Commands.openPluginManager, () => this.pluginManager.open()),
+      vscode.commands.registerCommand(Commands.reloadPlugins, async () => {
+        for (const plugin of this.pluginRegistry.list()) {
+          await this.pluginRegistry.reload(plugin.id);
+        }
+      }),
+      vscode.commands.registerCommand(Commands.importLocalPlugin, async () => {
+        const picked = await vscode.window.showOpenDialog({
+          canSelectMany: false,
+          canSelectFiles: false,
+          canSelectFolders: true,
+          openLabel: vscode.l10n.t("Import Plugin"),
+          title: vscode.l10n.t("Choose a local plugin folder"),
+        });
+        const source = picked?.[0];
+        if (!source) {
+          return;
+        }
+        try {
+          const plugin = await this.pluginRegistry.importFromFolder(source.fsPath);
+          await vscode.window.showInformationMessage(
+            vscode.l10n.t("Imported plugin {0}", `${plugin.manifest.name} v${plugin.manifest.version}`)
+          );
+          await this.pluginManager.open();
+        } catch (error) {
+          await vscode.window.showErrorMessage(
+            vscode.l10n.t("Plugin import failed: {0}", error instanceof Error ? error.message : String(error))
+          );
+        }
+      })
+    );
 
     context.subscriptions.push({
       dispose: () => {
         this.sshTerminalService.dispose();
         this.sftpService.dispose();
+        this.pluginManager.dispose();
         void this.pluginRegistry.dispose();
       },
     });

@@ -52,6 +52,7 @@ export function createThresholdEditorPlugin(): DevicePlugin {
       },
     },
     async activate(host: DevicePluginHost) {
+      host.log("activated");
       const frameSub = host.onDidReceiveFrame((event) => {
         latestFrame = event;
         if (!state.deviceKey) {
@@ -74,6 +75,7 @@ export function createThresholdEditorPlugin(): DevicePlugin {
       disposable = host.ui.registerCommand(
         Commands.openPluginThresholdEditor,
         async () => {
+          host.log("open panel");
           panel?.dispose();
           panel = host.ui.createPanel({
             viewType: "maixcodePluginThresholdEditor",
@@ -88,6 +90,7 @@ export function createThresholdEditorPlugin(): DevicePlugin {
                 return;
               }
               if (payload.type === "update" && payload.mode && payload.ranges?.length === 6) {
+                host.log(`update ${payload.mode}`);
                 state = {
                   ...state,
                   mode: payload.mode,
@@ -96,6 +99,7 @@ export function createThresholdEditorPlugin(): DevicePlugin {
                 return;
               }
               if (payload.type === "export") {
+                host.log("export json");
                 const doc = await host.ui.openTextDocument({
                   language: "json",
                   content: JSON.stringify(
