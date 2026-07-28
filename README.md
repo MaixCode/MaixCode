@@ -18,6 +18,7 @@ MaixCode 是 VS Code 的 MaixCAM / MaixPy 开发扩展，让您在编辑器内�
 - **SFTP 文件管理** — 虚拟文件系统挂载设备目录，在 VS Code 资源管理器中直接管理设备文件
 - **项目打包部署** — 通过 `app.yaml` 配置项目，打包 zip 并安装到设备运行
 - **Runtime 安装** — 从 Sipeed 云端获取并安装 MaixVision Runtime
+- **插件系统** — 支持本地导入和商场安装插件，可扩展设备交互、Webview 面板、SSH 命令等功能
 - **多源示例代码** — 支持官方 CDN（sipeed）、本地文件夹、GitHub 仓库三种示例源
 
 ---
@@ -78,6 +79,18 @@ MaixCode 是 VS Code 的 MaixCAM / MaixPy 开发扩展，让您在编辑器内�
 - 点击文件以 `example://` 虚拟编辑器打开（安全编辑，保存时需另存）
 - 右键 → **Open Source File** 打开实际缓存文件（刷新可能覆盖）
 - 支持示例源类型：`sipeed`（官方 CDN）、`local_folder`（本地目录）、`github_repo`（GitHub 仓库）
+
+### 插件开发
+
+MaixCode 支持通过 JavaScript/CommonJS 编写插件扩展功能。详见 [插件开发指南](docs/plugin-development.md)。
+
+- **导入插件**：插件管理器 → **Import Plugin** → 选择插件目录
+- **插件商场**：从官方/社区商场一键安装、更新
+- **Webview 面板**：创建自定义 UI 面板与设备交互
+- **SSH 命令**：在设备上执行 shell 命令、读写文件
+- **设备事件**：监听设备连接、帧数据、输出等事件
+
+示例插件 `samples/device-process-list/` 可导入体验。
 
 ---
 
