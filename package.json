@@ -2,7 +2,7 @@
   "name": "maixcode-plg",
   "displayName": "%maixcode.displayName%",
   "description": "%maixcode.description%",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "Cranyozen",
   "icon": "resources/icon.png",
   "engines": {
@@ -670,7 +670,11 @@
           "description": "%maixcode.config.pluginMarketplaces%",
           "items": {
             "type": "object",
-            "required": ["id", "label", "type"],
+            "required": [
+              "id",
+              "label",
+              "type"
+            ],
             "properties": {
               "id": {
                 "type": "string",
@@ -682,7 +686,10 @@
               },
               "type": {
                 "type": "string",
-                "enum": ["github", "http"],
+                "enum": [
+                  "github",
+                  "http"
+                ],
                 "description": "%maixcode.config.pluginMarketplaces.type%"
               },
               "owner": {
